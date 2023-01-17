@@ -1,10 +1,18 @@
-# Test with multiple http requests!(대량 HTTP request 전송 테스트)
+# Test with multiple http requests(대량 HTTP request 전송 테스트)
 
 This program is written in Golang. **You can send multiple HTTP requests by simply running `docker-compose up`!**
 (해당 프로젝트는 Golang으로 제작되었으며, `docker-compose up`를 통해 다량의 http 패킷을 전송할 수 있습니다)
 
 # Test Steps
-1. Edit `main.go` with your own json body!
+1. Edit `app.env` RequestUrl, reqeust frequency, the number of worker process(전송url, http 전송개수, 실행 스레드 개수를 `app.env`에서 수정하세용)
+
+```
+RequestURL=http://127.0.0.1:8080/auth/user
+RequestNum=10000
+WorkerNum=100
+```
+
+2. Edit `main.go` with your own json body!(`main.go`에서 전송하고자 하는 json struct와 랜덤값들을 설정해주시면 됩니다)
 ```golang
 ...
 // For your own json body, edit here!(보내고 싶은 json 구조에 맞게 수정하시면 됩니다)
@@ -32,7 +40,7 @@ func worker(contexts *sync.Map, wg *sync.WaitGroup, requestURL string, client *h
     ...
 }
 ```
-2. Run `docker-compose up`
+3. Run `docker-compose up` in root directory and see what happen!(루트 디렉토리에서 `docker-compose up`을 실행하시고 결과를 확인해보세요)
 
 # Test Results
 
