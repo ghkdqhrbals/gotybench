@@ -5,8 +5,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    ports:
-      - "8002:8002"
     command: ["/app/main"]
-    network_mode: "host" 
+    network_mode: host
     

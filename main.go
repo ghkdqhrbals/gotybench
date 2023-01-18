@@ -50,7 +50,7 @@ func worker(contexts *sync.Map, wg *sync.WaitGroup, requestURL string, client *h
 	// 로컬 맵 생성
 	m := make(map[int]int)
 
-	for i := 0; i < transferRatePerSecond; i++ {
+	for i := 1; i < transferRatePerSecond+1; i++ {
 
 		// ---------- change this data ---------
 		s := &User{
@@ -59,9 +59,10 @@ func worker(contexts *sync.Map, wg *sync.WaitGroup, requestURL string, client *h
 			Email:    RandStringEn(5) + "@gmail.com",
 			UserPw:   RandStringEn(10),
 		}
+
 		buf, err := json.Marshal(s)
 		if err != nil {
-			log.Fatal(err)
+			fmt.Println(err)
 			return
 		}
 		// ------------------------------------
@@ -70,6 +71,7 @@ func worker(contexts *sync.Map, wg *sync.WaitGroup, requestURL string, client *h
 		// 요청 생성
 		req, err := http.NewRequest(http.MethodPost, requestURL, bodyReader)
 		if err != nil {
+			fmt.Println(err)
 			os.Exit(1)
 		}
 
@@ -81,7 +83,7 @@ func worker(contexts *sync.Map, wg *sync.WaitGroup, requestURL string, client *h
 		if err != nil {
 			fmt.Println("ERROR MESSAGE:", err)
 		}
-		defer res.Body.Close()
+
 		// 로컬 맵에 삽입
 		m[res.StatusCode] += 1
 	}
@@ -94,7 +96,6 @@ func worker(contexts *sync.Map, wg *sync.WaitGroup, requestURL string, client *h
 			contexts.Store(k, v)
 		}
 	}
-
 }
 
 func main() {
@@ -124,7 +125,7 @@ func main() {
 	t := http.DefaultTransport.(*http.Transport).Clone()
 	t.MaxIdleConns = 10000    // connection pool 크기
 	t.MaxConnsPerHost = 10000 // 호스트 별 최대 할당 connection
-	t.MaxIdleConnsPerHost = 100
+	t.MaxIdleConnsPerHost = 1000
 
 	// 클라이언트 설정 및 timeout
 	client := &http.Client{
