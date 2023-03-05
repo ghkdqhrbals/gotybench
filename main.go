@@ -8,17 +8,38 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
+	"runtime"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	"testapi.com/m/util"
 )
 
+func goid() int {
+	var buf [64]byte
+	n := runtime.Stack(buf[:], false)
+	idField := strings.Fields(strings.TrimPrefix(string(buf[:n]), "goroutine "))[0]
+	id, err := strconv.Atoi(idField)
+	if err != nil {
+		panic(fmt.Sprintf("cannot get goroutine id: %v", err))
+	}
+	return id
+}
+
 type User struct {
 	UserId   string `json:"userId"`
 	UserName string `json:"userName"`
 	Email    string `json:"email"`
 	UserPw   string `json:"userPw"`
+}
+
+type RequestAddChatMessageDTO struct {
+	RoomId   int    `json:"roomId"`
+	Writer   string `json:"writer"`
+	WriterId string `json:"writerId"`
+	Message  string `json:"message"`
 }
 
 func init() {
@@ -45,7 +66,8 @@ func RandStringKr(n int) string {
 	return string(b)
 }
 
-func worker(contexts *sync.Map, wg *sync.WaitGroup, requestURL string, client *http.Client, transferRatePerSecond int, number_worker int) {
+func worker(mutex *sync.RWMutex, contexts *sync.Map, wg *sync.WaitGroup, requestURL string, client *http.Client, transferRatePerSecond int, number_worker int) {
+
 	defer wg.Done()
 	// 로컬 맵 생성
 	m := make(map[int]int)
@@ -59,6 +81,13 @@ func worker(contexts *sync.Map, wg *sync.WaitGroup, requestURL string, client *h
 			Email:    RandStringEn(5) + "@gmail.com",
 			UserPw:   RandStringEn(10),
 		}
+
+		// s := &RequestAddChatMessageDTO{
+		// 	RoomId:   7,
+		// 	Writer:   "bbb",
+		// 	WriterId: "b",
+		// 	Message:  RandStringEn(10),
+		// }
 
 		buf, err := json.Marshal(s)
 		if err != nil {
@@ -88,6 +117,7 @@ func worker(contexts *sync.Map, wg *sync.WaitGroup, requestURL string, client *h
 		m[res.StatusCode] += 1
 	}
 
+	mutex.Lock()
 	for k, v := range m {
 		result, ok := contexts.Load(k)
 		if ok {
@@ -96,12 +126,13 @@ func worker(contexts *sync.Map, wg *sync.WaitGroup, requestURL string, client *h
 			contexts.Store(k, v)
 		}
 	}
+	mutex.Unlock()
 }
 
 func main() {
 
 	var wg sync.WaitGroup
-	startTime := time.Now()
+	var mutex = &sync.RWMutex{}
 
 	config, err := util.LoadConfig(".")
 	if err != nil {
@@ -123,23 +154,24 @@ func main() {
 	// NGINX can handle a maximum of 512 concurrent connections. In newer versions, NGINX supports up to 1024 concurrent connections, by default.
 	// 이를 잘 확인하고 설정해야합니다.
 	t := http.DefaultTransport.(*http.Transport).Clone()
-	t.MaxIdleConns = 10000    // connection pool 크기
-	t.MaxConnsPerHost = 10000 // 호스트 별 최대 할당 connection
-	t.MaxIdleConnsPerHost = 1000
+	t.MaxIdleConns = 1000    // connection pool 크기
+	t.MaxConnsPerHost = 1000 // 호스트 별 최대 할당 connection
+	t.MaxIdleConnsPerHost = 100
 
 	// 클라이언트 설정 및 timeout
 	client := &http.Client{
-		Timeout:   10 * time.Second,
+		Timeout:   60 * time.Second,
 		Transport: t,
 	}
 
 	// 스레드 싱크 맵
 	var contexts = &sync.Map{}
 
+	startTime := time.Now()
 	// 멀티 스레드 http request
 	for i := 0; i < number_worker; i++ {
 		wg.Add(1)
-		go worker(contexts, &wg, requestURL, client, int(transferRatePerSecond/number_worker), i)
+		go worker(mutex, contexts, &wg, requestURL, client, int(transferRatePerSecond/number_worker), i)
 	}
 	fmt.Println("Proceeding! Please wait until getting all the responses")
 	wg.Wait()

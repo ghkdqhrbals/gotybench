@@ -8,3 +8,4 @@ services:
     command: ["/app/main"]
     network_mode: host
     
+    
