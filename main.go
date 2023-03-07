@@ -72,7 +72,7 @@ func worker(mutex *sync.RWMutex, contexts *sync.Map, wg *sync.WaitGroup, request
 	// 로컬 맵 생성
 	m := make(map[int]int)
 
-	for i := 1; i < transferRatePerSecond+1; i++ {
+	for i := 1; i < (transferRatePerSecond)/2+1; i++ {
 
 		// ---------- change this data ---------
 		s := &User{
