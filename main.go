@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"log"
 	"math/rand"
@@ -14,8 +15,154 @@ import (
 	"sync"
 	"time"
 
-	"testapi.com/m/util"
+	dynamicstruct "github.com/ompluscator/dynamic-struct"
 )
+
+var (
+	requests int64
+	url      string
+	clients  int64
+	body     string
+	method   string
+)
+
+func init() {
+	flag.Int64Var(&requests, "r", 10000, "요청 개수")
+	flag.Int64Var(&clients, "t", 100, "스레드 개수")
+	flag.StringVar(&url, "u", "", "URL")
+	flag.StringVar(&body, "j", "", "Json \"[KEY1,TYPE1,KEY2,TYPE2,...]\" ")
+}
+
+type JSONTime struct {
+	time.Time
+}
+
+func (t JSONTime) MarshalJSON() ([]byte, error) {
+	//do your serializing here
+	stamp := fmt.Sprintf("\"%s\"", t.Format("Mon Jan _2"))
+	return []byte(stamp), nil
+}
+
+type Configuration struct {
+	url        string
+	method     string
+	requests   int64
+	clients    int64
+	randomJson map[string]string
+}
+
+func NewConfiguration() *Configuration {
+
+	if url == "" {
+		flag.Usage()
+		os.Exit(1)
+	}
+
+	if body == "" {
+		flag.Usage()
+		os.Exit(1)
+	}
+
+	configuration := &Configuration{
+		url:        "",
+		method:     http.MethodPost,
+		requests:   int64((1 << 63) - 1),
+		clients:    int64((1 << 63) - 1),
+		randomJson: map[string]string{},
+	}
+
+	if url != "" {
+		configuration.url = url
+	}
+
+	if requests != 10000 {
+		configuration.requests = requests
+	}
+
+	if clients != 100 {
+		configuration.clients = clients
+	}
+
+	if body != "" {
+		body = strings.Replace(body, "[", "", -1)
+		body = strings.Replace(body, "]", "", -1)
+		temps := strings.Split(body, ",")
+		for i := 0; i < len(temps); i += 2 {
+			if i > len(temps)-2 {
+				errorKeyType(temps[i])
+				os.Exit(1)
+			}
+			configuration.randomJson[temps[i]] = temps[i+1]
+		}
+	}
+
+	return configuration
+}
+
+func returnDefaults(column_type string) interface{} {
+	switch column_type {
+	case "int":
+		return 0
+	case "double":
+		return 0.0
+	case "string":
+		return ""
+	case "time":
+		return JSONTime{time.Now()}
+	case "boolean":
+		return false
+	}
+	return "null"
+}
+
+func returnRandomByTypes(column_type string) string {
+	switch column_type {
+	case "int":
+		return strconv.Itoa(rand.Intn(100))
+	case "double":
+		return fmt.Sprintf("%f", rand.Float64())
+	case "string":
+		return "\"" + RandStringEn(6) + "\""
+	case "boolean":
+		return "false"
+	}
+	return "null"
+}
+
+func dynamicstructs(jsons map[string]string) interface{} {
+	instance := dynamicstruct.NewStruct()
+	for key, val := range jsons {
+		instance.AddField(strings.ToUpper(key), returnDefaults(val), `json:"`+key+`"`)
+		fmt.Println(key, val)
+	}
+	return instance.Build().New()
+}
+
+func randomGeneratedData(jsons map[string]string) []byte {
+
+	data := ""
+	for key, val := range jsons {
+		if returnRandomByTypes(val) == "null" {
+			errorKeyType(key)
+			os.Exit(1)
+		}
+		data += "\"" + key + "\"" + ":" + returnRandomByTypes(val) + ","
+	}
+	fmt.Println(data)
+
+	return []byte(`{` + data[:len(data)-1] + `}`)
+
+}
+
+func errorKeyType(key string) {
+	fmt.Println("[KEY ERROR] ", key, "의 타입이 없습니다. 아래의 타입 중 하나를 선택해서 표기해주세요.")
+	fmt.Println("| - Support Json Type -\t|")
+	fmt.Println("| * int \t\t|")
+	fmt.Println("| * float \t\t|")
+	fmt.Println("| * string \t\t|")
+	fmt.Println("| * boolean \t\t|")
+	os.Exit(1)
+}
 
 func goid() int {
 	var buf [64]byte
@@ -66,21 +213,38 @@ func RandStringKr(n int) string {
 	return string(b)
 }
 
-func worker(mutex *sync.RWMutex, contexts *sync.Map, wg *sync.WaitGroup, requestURL string, client *http.Client, transferRatePerSecond int, number_worker int) {
+func worker(jsons map[string]string, mutex *sync.RWMutex, contexts *sync.Map, wg *sync.WaitGroup, requestURL string, client *http.Client, transferRatePerSecond int, number_worker int) {
 
 	defer wg.Done()
 	// 로컬 맵 생성
 	m := make(map[int]int)
+	instance := dynamicstruct.NewStruct().Build().New()
+	for key, val := range jsons {
+		temp_instance := dynamicstruct.NewStruct().AddField(strings.ToUpper(key), returnDefaults(val), `json:"`+key+`"`).Build().New()
+		instance = dynamicstruct.MergeStructs(instance, temp_instance).Build().New()
+	}
 
 	for i := 1; i < (transferRatePerSecond)/2+1; i++ {
+		data := randomGeneratedData(jsons)
+		err := json.Unmarshal(data, &instance)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		// data, err = json.Marshal(instance)
+		// if err != nil {
+		// 	log.Fatal(err)
+		// }
+		// fmt.Println(string(data))
 
 		// ---------- change this data ---------
 		s := &User{
-			UserId:   RandStringEn(8),
+			UserId:   "A",
 			UserName: RandStringKr(1) + RandStringKr(2),
 			Email:    RandStringEn(5) + "@gmail.com",
 			UserPw:   RandStringEn(10),
 		}
+		fmt.Println("instance:", s)
 
 		// s := &RequestAddChatMessageDTO{
 		// 	RoomId:   7,
@@ -97,6 +261,7 @@ func worker(mutex *sync.RWMutex, contexts *sync.Map, wg *sync.WaitGroup, request
 		// ------------------------------------
 
 		bodyReader := bytes.NewReader(buf)
+
 		// 요청 생성
 		req, err := http.NewRequest(http.MethodPost, requestURL, bodyReader)
 		if err != nil {
@@ -133,23 +298,27 @@ func main() {
 
 	var wg sync.WaitGroup
 	var mutex = &sync.RWMutex{}
+	rand.Seed(time.Now().UnixNano())
+	flag.Parse()
+	configuration := NewConfiguration()
 
-	config, err := util.LoadConfig(".")
-	if err != nil {
-		log.Fatal("config 가져오기 에러", err)
-	}
-	fmt.Println("Request url:", config.RequestUrl)
-	fmt.Println("The number of HTTP Requests:", config.RequestNum)
-	fmt.Println("The number of threads:", config.WorkerNum)
+	// config, err := util.LoadConfig(".")
+	// if err != nil {
+	// 	log.Fatal("config 가져오기 에러", err)
+	// }
+
+	fmt.Println("Request url:", configuration.url)
+	fmt.Println("The number of HTTP Requests:", configuration.requests)
+	fmt.Println("The number of threads:", configuration.clients)
 
 	// http 전송 url
-	requestURL := config.RequestUrl
+	requestURL := configuration.url
 
 	// 실행횟수 설정
-	transferRatePerSecond := config.RequestNum
+	transferRatePerSecond := configuration.requests
 
 	// 실행 스레드 개수 설정
-	number_worker := config.WorkerNum
+	number_worker := configuration.clients
 
 	// NGINX can handle a maximum of 512 concurrent connections. In newer versions, NGINX supports up to 1024 concurrent connections, by default.
 	// 이를 잘 확인하고 설정해야합니다.
@@ -169,9 +338,9 @@ func main() {
 
 	startTime := time.Now()
 	// 멀티 스레드 http request
-	for i := 0; i < number_worker; i++ {
+	for i := 0; i < int(number_worker); i++ {
 		wg.Add(1)
-		go worker(mutex, contexts, &wg, requestURL, client, int(transferRatePerSecond/number_worker), i)
+		go worker(configuration.randomJson, mutex, contexts, &wg, requestURL, client, int(transferRatePerSecond/number_worker), i)
 	}
 	fmt.Println("Proceeding! Please wait until getting all the responses")
 	wg.Wait()
