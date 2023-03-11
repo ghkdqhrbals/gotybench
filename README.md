@@ -1,65 +1,51 @@
 # Introduction(gotybench)
 
-저는 불편한 툴들을 자동화하는 것을 좋아합니다 :)
+저는 불편한 툴들을 자동화하는 것을 좋아합니다. 여러 부하 분산을 테스팅할 수 있는 툴을 찾다가 **랜덤한 값을 가지는 json으로 다량의 request를 전송하는 툴**을 찾기 힘들었습니다. 즉, 기존 툴들은 Fuzzing하기 힘들었어요.
 
-여러가지 툴들을 살펴보다가 랜덤한 json body를 가지는 
+그래서 만들었어요!
 
-# Test your server with multiple http requests(대량 HTTP request를 통한 서버 부하 테스트)
-
-해당 프로젝트는 Golang으로 제작되었으며, `docker-compose up`를 통해 다량의 http 패킷을 전송할 수 있습니다
-
-(This program is written in Golang. **You can send multiple HTTP requests by simply running `docker-compose up`**)
-
+해당 프로젝트는 Golang으로 제작되었으며, 다량의 랜덤한 http 패킷을 전송할 수 있습니다.
 
 # Usage
-1. 전송url, http 전송개수, 실행 스레드 개수를 `app.env`에서 수정하세요(Edit `app.env` RequestUrl, reqeust frequency, the number of worker process)
+1. run `go run main.go` in your terminal
 
-```
-RequestURL=http://127.0.0.1:8080/auth/user
-RequestNum=10000
-WorkerNum=100
-```
+	```bash
+	Alloc = 0 MiB	TotalAlloc = 0 MiB	Sys = 8 MiB	NumGC = 0
+		Properties
+		- Max parallelism : 8
+	Usage of /var/folders/h0/_d_zrr0j57x8wmknjb1r6hfm0000gn/T/go-build3252492082/b001/exe/main:
+	-c int
+			스레드 개수 (default 100)
+	-j string
+			Json "[KEY1,TYPE1,KEY2,TYPE2,...]" 
+	-r int
+			요청 개수 (default 10000)
+	-t int
+			요청 타임아웃(second) (default 30)
+	-u string
+			URL
+	```                                                    
+2. choose your options and run
 
-1. `main.go`에서 전송하고자 하는 json struct와 랜덤값들을 설정해주시면 됩니다(Edit `main.go` with your own json body)
-```golang
-...
-// 보내고 싶은 json 구조에 맞게 수정하시면 됩니다(For your own json body, edit here!)
-type User struct {
-	UserId   string `json:"userId"`
-	UserName string `json:"userName"`
-	Email    string `json:"email"`
-	UserPw   string `json:"userPw"`
-}
-// ----------------------------------
-...
-func worker(contexts *sync.Map, wg *sync.WaitGroup, requestURL string, client *http.Client, transferRatePerSecond int, number_worker int) {
-	...
-	for i := 0; i < transferRatePerSecond; i++ {
-		// ---------- 랜덤값을 설정하는 부분입니다(For your own json body, edit here!) ---------
-		s := &User{
-			UserId:   RandStringEn(8),
-			UserName: RandStringKr(1) + RandStringKr(2),
-			Email:    RandStringEn(5) + "@gmail.com",
-			UserPw:   RandStringEn(10),
-		}
-        // ------------------------------------------------------------------------------
-		...
-	}
-    ...
-}
-```
-1. 루트 디렉토리에서 `docker-compose up`을 실행하시고 결과를 확인해보세요(Run `docker-compose up` in root directory and see what happen!)
+# Example
+
+1. Run `go run main.go -j "[userId,string,userPw,string,mail,string,userName,string]" -r 10000 -c 1000 -u http://127.0.0.1:8080/auth/user`
+
+	```
+	Alloc = 0 MiB	TotalAlloc = 0 MiB	Sys = 8 MiB	NumGC = 0
+		Properties
+	- Max parallelism : 8
+	- Request url : http://127.0.0.1:8080/auth/user
+	- The number of HTTP Requests : 10000
+	- The number of threads : 1000
+	=> Proceeding... Please wait until getting all the responses 10000
+	[RESULTS] Response status code:  200 , How many?:  10000
+	```
+
+
+
 
 # Test Results
-
-```
-test-multiple-http-request  | Request url: http://127.0.0.1:8080/auth/user
-test-multiple-http-request  | The number of HTTP Requests: 10000
-test-multiple-http-request  | The number of threads: 100
-test-multiple-http-request  | Proceeding! Please wait until getting all the responses
-test-multiple-http-request  | Elapsed Time: 30.533003028
-test-multiple-http-request  | Response status code:  200 , How many?:  10000
-```
 
 총 10K개의 rest api call 을 진행하였고, 100개의 go-routine으로 진행한 결과입니다. 약 30.5초가 소요되었으며, 전부 200 status code를 반환 받은 것을 확인할 수 있습니다
 
