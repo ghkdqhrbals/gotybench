@@ -1,13 +1,38 @@
 # Introduction(gotybench)
 
-저는 불편한 툴들을 자동화하는 것을 좋아합니다. 여러 부하 분산을 테스팅할 수 있는 툴을 찾다가 **랜덤한 값을 가지는 json으로 다량의 request를 전송하는 툴**을 찾기 힘들었습니다. 즉, 기존 툴들은 Fuzzing하기 힘들었어요.
+![](img/24.gif)
 
-그래서 만들었어요!
+제 목표는 **초당 1000건 이상의 api 를 견딜 수 있는 서버를 만드는 것**입니다. 즉, 초당 1000건을 테스트 해봐야된다는 소리겠죠? 
 
-해당 프로젝트는 Golang으로 제작되었으며, 다량의 랜덤한 http 패킷을 전송할 수 있습니다.
+그러기 위해서는 동시다발적으로 api를 전송하는 툴이 필요한데, 문제는 **대부분의 툴들이 Fuzzing된 Json 파일을 지원하지 않는다**는 것입니다. 즉, 기존 툴들은 **1. Json을 랜덤으로 생성해서 파일로 저장하고** -> **2. 이를 읽어서 다량으로 전송** 이 두 가지 과정을 거쳐가야만 해야하기에 다소 불편하였습니다.
+> 기존 툴들 정리 : [HTTP Benchmark Tools](https://github.com/denji/awesome-http-benchmark)
+
+**그래서 gotybench(HTTP benchmark tool)은 다음을 목표로 설계 및 제작하였습니다.**
+
+1. **테스트 동시성 보장** : goroutine 경량 멀티 스레드를 사용하였으며, 채널을 통해 통신하도록 설정하였습니다.
+2. **다이나믹 Structure 을 통한 Fuzzed Json 오브젝트 생성** : 사용자가 key와 value type들만 설정해주면 자동으로 랜덤한 json 오브젝트를 생성하도록 제작하였습니다.
+    * ex) "gotybench -j [userId,string,userAge,int]" : userId의 value를 랜덤한 string으로 설정합니다. 또한 userAge의 value를 랜덤한 int로 설정합니다. 
+
+# Options
+| Option | Detail                                                                                                                                                                                                                                                                       |
+| ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| -c     | 동시처리가능한 스레드 개수를 해당 옵션으로 설정할 수 있습니다.                                                                                                                                                                                                               |
+| -h     | 옵션들의 설명을 확인할 수 있습니다.                                                                                                                                                                                                                                          |
+| -j     | 핵심적인 Fuzzing 기능입니다. <br> json object를 해당 옵션으로 key/type을 설정하면, 랜덤한 value의 json obejct가 생성됩니다.<br>Fuzzing이 지원되는 type 은 4가지로 아래와 같습니다.<br>int, float, string, boolean<br>Usage Example<br>ex) `-j "[userId,string,userAge,int]"` |
+| -r     | HTTP POST request 개수를 해당 옵션으로 설정할 수 있습니다.                                                                                                                                                                                                                   |
+| -t     | 벤치마크 클라이언트의 network connection 의 timeout을 해당 옵션으로 설정할 수 있습니다.                                                                                                                                                                                      |
+| -u     | 요청하는 URL을 설정할 수 있습니다.                                                                                                                                                                                                                                           |
+
+**이중 특히 `-j` 옵션은 Dynamic Struct를 차용함으로써, 오브젝트의 private 필드는 사용자의 입력값에 따라 구조가 변경됩니다!**
+
+# Before we started, we need to get ...
+1. run `go get github.com/fatih/color` for coloring your terminal
+2. run `go get -v github.com/gosuri/uilive` for updating process
+3. run `go get -u github.com/go-echarts/go-echarts/v2/...` to see graph with responses in timeseries.
+4. run `go get github.com/ompluscator/dynamic-struct` to dynamically add field of json structs.
 
 # Usage
-1. run `go run main.go` in your terminal
+1. run `go run main.go` in your terminal and see options
 
 	```bash
 	Alloc = 0 MiB	TotalAlloc = 0 MiB	Sys = 8 MiB	NumGC = 0
@@ -29,40 +54,39 @@
 
 # Example
 
-1. Run `go run main.go -j "[userId,string,userPw,string,mail,string,userName,string]" -r 10000 -c 1000 -u http://127.0.0.1:8080/auth/user`
+```bash
+$ go run main.go -j "[userId,string,userPw,string,mail,string,userName,string]" -r 10000 -c 1000 -u http://127.0.0.1:8080/auth/user
 
-	```
-	Alloc = 0 MiB	TotalAlloc = 0 MiB	Sys = 8 MiB	NumGC = 0
-		Properties
-	- Max parallelism : 8
-	- Request url : http://127.0.0.1:8080/auth/user
-	- The number of HTTP Requests : 10000
-	- The number of threads : 1000
-	=> Proceeding... Please wait until getting all the responses 10000
-	[RESULTS] Response status code:  200 , How many?:  10000
-	```
+ [Properties]
+- Max parallelism : 8
+- Request url : http://127.0.0.1:8080/auth/user
+- The number of HTTP Requests : 10000
+- The number of threads : 100
+Listening server's response .. (10000/10000)
 
+ [Results]
+---------------------------------------------------------
+| Response Status 	| Count 	| Percent 	|
+| 200 			| 10000/10000 	| 100.0%	|
+---------------------------------------------------------
+- Average response time 	: 110.66 ms
+- Max response time     	: 770.32 ms
+- Min response time     	: 21.46 ms
 
+ [Memory Usage]
+- Heap size = 2 MB
+- Cumulative Heap size = 161 MB
+- All goroutine size = 22 MB
+- GC cycle 횟수 = 48
 
-
-# Test Results
-
-총 10K개의 rest api call 을 진행하였고, 100개의 go-routine으로 진행한 결과입니다. 약 30.5초가 소요되었으며, 전부 200 status code를 반환 받은 것을 확인할 수 있습니다
-
-(As you can see here, we send 10K http request to our server and get responses with status code 200 within 30 seconds.)
-
-* Flow of example test
+Finished! ( Total Elapsed Time : 11.4659 seconds ) 
+Now you can see response time series graph in local machine => http://localhost:8022 
 
 ```
-configurate app.env
---(Viper)--> go build
---> build docker images
---> run docker container(network:host)
---> nginx
---> auth-server
-```
 
-# **Notice!**
-프록시 서버가 컨테이너로 실행되고, 호스트한테 프록시 포트가 expose되어있다면, 그대로 `docker-compose up`을 실행하시면 됩니다(When your server run in docker container and expose port through host, this docker setting will be fine.)
+# Results
 
-하지만 내부 포트로 expose되어 있다면, 같은 네트워크로 묶어줘야합니다(However, when your server expose port inside the container, you should change compose setting by delete `network_mode: "host"` and set alias with your server.)
+As you can see here, we send 10K http request to our server and get responses with status code 200 within 12 seconds.
+
+![img](img/27.png)
+![img](img/28.png)

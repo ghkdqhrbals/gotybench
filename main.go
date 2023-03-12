@@ -17,6 +17,8 @@ import (
 	"time"
 
 	"github.com/fatih/color"
+	"github.com/go-echarts/go-echarts/v2/charts"
+	"github.com/go-echarts/go-echarts/v2/opts"
 	"github.com/gosuri/uilive"
 	dynamicstruct "github.com/ompluscator/dynamic-struct"
 )
@@ -28,24 +30,18 @@ var (
 	body           string
 	method         string
 	client_timeout int64
+	hp             string       // help flag
+	line2web       *charts.Line // Response 시간을 웹에 표시
+	infos          = fmt.Sprintf("\n| - Support Json Type -\t|\n| * int \t\t|\n| * float \t\t|\n| * string \t\t|\n| * boolean \t\t|")
+	randomKr       = []rune("김이박최정강조윤장임한오서신권황안송류전홍고문양손배조백허유남심노정하곽성차주우구신임나전민유진지엄채원천방공강현함변염양변여추노도소신석선설마길주연방위표명기반왕금옥육인맹제모장남탁국여진어은편구용")
 )
 
-func init() {
-	flag.Int64Var(&requests, "r", 10000, "요청 개수")
-	flag.Int64Var(&clients, "c", 100, "스레드 개수")
-	flag.Int64Var(&client_timeout, "t", 30, "요청 타임아웃(second)")
-	flag.StringVar(&url, "u", "", "URL")
-	flag.StringVar(&body, "j", "", "Json \"[KEY1,TYPE1,KEY2,TYPE2,...]\" ")
-}
+const randomEn = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
-type JSONTime struct {
-	time.Time
-}
-
-func (t JSONTime) MarshalJSON() ([]byte, error) {
-	//do your serializing here
-	stamp := fmt.Sprintf("\"%s\"", t.Format("Mon Jan _2"))
-	return []byte(stamp), nil
+type nonBlocking struct {
+	Response    *http.Response
+	Error       error
+	ElapsedTime float64
 }
 
 type Configuration struct {
@@ -57,7 +53,22 @@ type Configuration struct {
 	client_timeout int64
 }
 
+func init() {
+	flag.StringVar(&hp, "h", "", "see options")
+	flag.Int64Var(&requests, "r", 10000, "The number of request")
+	flag.Int64Var(&clients, "c", 100, "The number of thread")
+	flag.Int64Var(&client_timeout, "t", 30, "Request Timeout(second)")
+	flag.StringVar(&url, "u", "", "Request URL")
+	flag.StringVar(&body, "j", "", "Inform us your Json key/type to FUZZING with no space between key and type\n\"[KEY1,TYPE1,KEY2,TYPE2,...]\" "+infos)
+	rand.Seed(time.Now().UnixNano())
+}
+
 func NewConfiguration() *Configuration {
+
+	if hp != "" {
+		flag.Usage()
+		os.Exit(1)
+	}
 
 	if url == "" {
 		flag.Usage()
@@ -118,8 +129,6 @@ func returnDefaults(column_type string) interface{} {
 		return 0.0
 	case "string":
 		return ""
-	case "time":
-		return JSONTime{time.Now()}
 	case "boolean":
 		return false
 	}
@@ -129,11 +138,11 @@ func returnDefaults(column_type string) interface{} {
 func returnRandomByTypes(column_type string) string {
 	switch column_type {
 	case "int":
-		return strconv.Itoa(rand.Intn(100))
+		return strconv.Itoa(rand.Intn(1000))
 	case "double":
 		return fmt.Sprintf("%f", rand.Float64())
 	case "string":
-		return "\"" + RandStringEn(6) + "\""
+		return "\"" + RandStringEn(10) + "\""
 	case "boolean":
 		return "false"
 	}
@@ -166,13 +175,25 @@ func randomGeneratedData(jsons map[string]string) []byte {
 }
 
 func errorKeyType(key string) {
-	fmt.Println("[KEY ERROR] ", key, "의 타입이 없습니다. 아래의 타입 중 하나를 선택해서 표기해주세요.")
+	boldRed.Printf("[Key Error] %s 의 타입이 없습니다. 아래의 타입 중 하나를 선택해서 표기해주세요.\n", key)
 	fmt.Println("| - Support Json Type -\t|")
 	fmt.Println("| * int \t\t|")
 	fmt.Println("| * float \t\t|")
 	fmt.Println("| * string \t\t|")
 	fmt.Println("| * boolean \t\t|")
 	os.Exit(1)
+}
+
+// PrintMemUsage outputs the current, total and OS memory being used. As well as the number
+// of garage collection cycles completed.
+func PrintMemUsage() {
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	boldYellow.Printf("\n [Memory Usage]\n")
+	yellow.Printf("- Heap size = %v MB\n", bToMb(m.Alloc))
+	yellow.Printf("- Cumulative Heap size = %v MB\n", bToMb(m.TotalAlloc))
+	yellow.Printf("- All goroutine size = %v MB\n", bToMb(m.Sys))
+	yellow.Printf("- GC cycle 횟수 = %v\n\n", m.NumGC)
 }
 
 func goid() int {
@@ -185,28 +206,6 @@ func goid() int {
 	}
 	return id
 }
-
-type User struct {
-	UserId   string `json:"userId"`
-	UserName string `json:"userName"`
-	Email    string `json:"email"`
-	UserPw   string `json:"userPw"`
-}
-
-type RequestAddChatMessageDTO struct {
-	RoomId   int    `json:"roomId"`
-	Writer   string `json:"writer"`
-	WriterId string `json:"writerId"`
-	Message  string `json:"message"`
-}
-
-func init() {
-	rand.Seed(time.Now().UnixNano())
-}
-
-var randomKr = []rune("김이박최정강조윤장임한오서신권황안송류전홍고문양손배조백허유남심노정하곽성차주우구신임나전민유진지엄채원천방공강현함변염양변여추노도소신석선설마길주연방위표명기반왕금옥육인맹제모장남탁국여진어은편구용")
-
-const randomEn = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 func RandStringEn(n int) string {
 	b := make([]byte, n)
@@ -222,24 +221,6 @@ func RandStringKr(n int) string {
 		b[i] = randomKr[rand.Intn(len(randomKr))]
 	}
 	return string(b)
-}
-
-type nonBlocking struct {
-	Response    *http.Response
-	Error       error
-	ElapsedTime float64
-}
-
-// PrintMemUsage outputs the current, total and OS memory being used. As well as the number
-// of garage collection cycles completed.
-func PrintMemUsage() {
-	var m runtime.MemStats
-	runtime.ReadMemStats(&m)
-	// For info on each, see: https://golang.org/pkg/runtime/#MemStats
-	fmt.Printf("Alloc = %v MiB", bToMb(m.Alloc))
-	fmt.Printf("\tTotalAlloc = %v MiB", bToMb(m.TotalAlloc))
-	fmt.Printf("\tSys = %v MiB", bToMb(m.Sys))
-	fmt.Printf("\tNumGC = %v\n", m.NumGC)
 }
 
 func bToMb(b uint64) uint64 {
@@ -286,7 +267,6 @@ func worker(nb chan nonBlocking, jsons map[string]string, mutex *sync.RWMutex, c
 		// 실제 요청 전송 및 반환
 		res, err := client.Do(req)
 		elapsedTime := time.Since(startTime).Seconds()
-		// fmt.Println("TREAHD: ", number_worker)
 		nb <- nonBlocking{
 			Response:    res,
 			Error:       err,
@@ -294,11 +274,10 @@ func worker(nb chan nonBlocking, jsons map[string]string, mutex *sync.RWMutex, c
 		}
 
 		if err != nil {
-			fmt.Println("ERROR MESSAGE:", err)
-			// fmt.Println("에러 스테이터스 코드 : ", res.StatusCode)
+			boldRed.Printf("ERROR MESSAGE:%s\n", err.Error())
+			os.Exit(1)
 			continue
 		} else {
-
 			m[res.StatusCode] += 1
 			res.Body.Close()
 		}
@@ -316,25 +295,42 @@ func MaxParallelism() int {
 	return numCPU
 }
 
+func lineBase(items []opts.LineData, tm []time.Time) *charts.Line {
+	line := charts.NewLine()
+	line.SetGlobalOptions(
+		charts.WithTitleOpts(opts.Title{Title: "[gotybench] HTTP Benchmark Graph", Subtitle: "Response Time (Second) "}),
+	)
+	line.SetXAxis(tm).
+		AddSeries("Response Time ", items)
+	return line
+}
+
 func HandleResponse(nb chan nonBlocking, wg *sync.WaitGroup, requests int) {
 
-	// avg := 0.0
+	avg := 0.0
 	max_response_time := 0.0
 	min_response_time := -1.0
 	num := 0
-	writer := uilive.New() // writer for the first line
+	writer := uilive.New()
 	writer.Start()
 
 	m := make(map[int]int)
+	items := make([]opts.LineData, 0)
+	var tm []time.Time
 	elaspedTime := 0.0
 
 	for get := range nb {
 		num += 1
+		if (requests-num)%10 == 0 {
+			fmt.Fprintf(writer, "Listening server's response .. (%d/%d)\n", num, requests)
+		}
 		if get.Error != nil {
 			// log.Println(get.Error)
 		} else {
-			// fmt.Println(time.Now(), get.Response.StatusCode)
-			// avg = float64(num-1)/float64(num)*avg + 1/float64(num)*float64(get.ElapsedTime*1000) // 평균 필터
+			// 웹 그래프용 객체
+			items = append(items, opts.LineData{Value: get.ElapsedTime})
+			tm = append(tm, time.Now())
+			avg = float64(num-1)/float64(num)*avg + 1/float64(num)*float64(get.ElapsedTime) // 평균 필터
 			if min_response_time < 0 {
 				min_response_time = get.ElapsedTime
 			}
@@ -347,44 +343,85 @@ func HandleResponse(nb chan nonBlocking, wg *sync.WaitGroup, requests int) {
 		}
 
 		if num == requests {
+			writer.Stop()
+			writer.Flush()
+
+			boldGreen.Printf("\n [Results]\n")
+			fmt.Println("---------------------------------------------------------")
+			fmt.Println("| Response Status \t| Count \t| Percent \t|")
 			for k, v := range m {
-				fmt.Println("\t[RESULTS] Response status code: ", k, ", How many?: ", v)
-				fmt.Println(max_response_time, min_response_time)
+				fmt.Printf("| ")
+				if 200 <= k && k < 300 {
+					green.Printf("%d \t\t\t", k)
+					fmt.Printf("| ")
+					green.Printf("%d/%d \t", v, requests)
+					fmt.Printf("|")
+					fmt.Printf(" %.1f%%\t", float64(v)/float64(requests)*100.0)
+					fmt.Printf("|\n")
+				} else {
+					red.Printf("%d \t\t\t", k)
+					fmt.Printf("| ")
+					red.Printf("%d/%d \t", v, requests)
+					fmt.Printf("|")
+					fmt.Printf(" %.1f%%\t", float64(v)/float64(requests)*100.0)
+					fmt.Printf("|\n")
+				}
+
 			}
+			fmt.Println("---------------------------------------------------------")
+			green.Printf("- Average response time \t: %.2f ms\n", avg*1000)
+			green.Printf("- Max response time     \t: %.2f ms\n", max_response_time*1000)
+			green.Printf("- Min response time     \t: %.2f ms\n", min_response_time*1000.0)
+			PrintMemUsage()
+			line2web = lineBase(items, tm)
 		}
 		wg.Done()
 	}
 
 }
 
+var green = color.New(color.FgGreen)
+var boldGreen = color.New(color.FgGreen).Add(color.Bold)
+
+var yellow = color.New(color.FgHiYellow)
+var boldYellow = color.New(color.FgHiYellow).Add(color.Bold)
+
+var mg = color.New(color.FgHiMagenta)
+var boldMg = color.New(color.FgHiMagenta).Add(color.Bold)
+
+var red = color.New(color.FgHiRed)
+var boldRed = color.New(color.FgHiRed).Add(color.Bold)
+
+var boldCyan = color.New(color.FgCyan).Add(color.Bold)
+var cyan = color.New(color.FgCyan)
+
+func generateLineItems() []opts.LineData {
+	items := make([]opts.LineData, 0)
+	for i := 0; i < 7; i++ {
+		items = append(items, opts.LineData{Value: rand.Intn(300)})
+	}
+	return items
+}
+
+func httpserver(w http.ResponseWriter, _ *http.Request) {
+	line2web.Render(w)
+}
+
 func main() {
-	PrintMemUsage()
-
-	// success := color.New(color.Bold, color.FgGreen).FprintlnFunc()
-	// Or just add them to New()
-	d := color.New(color.FgCyan, color.Bold)
-
-	// Mix up foreground and background colors, create new mixes!
-	green := color.New(color.FgGreen)
-	boldGreen := green.Add(color.Bold)
-
-	d.Printf("\t Properties\n")
-	color.Cyan("\t- Max parallelism : %d", MaxParallelism())
 
 	wg := &sync.WaitGroup{}
 	var mutex = &sync.RWMutex{}
 	rand.Seed(time.Now().UnixNano())
 	flag.Parse()
+
 	configuration := NewConfiguration()
 
-	// config, err := util.LoadConfig(".")
-	// if err != nil {
-	// 	log.Fatal("config 가져오기 에러", err)
-	// }
+	boldCyan.Printf("\n [Properties]\n")
+	cyan.Printf("- Max parallelism : %d\n", MaxParallelism())
 
-	color.Cyan("\t- Request url : %s", configuration.url)
-	color.Cyan("\t- The number of HTTP Requests : %d", configuration.requests)
-	color.Cyan("\t- The number of threads : %d", configuration.clients)
+	cyan.Printf("- Request url : %s\n", configuration.url)
+	cyan.Printf("- The number of HTTP Requests : %d\n", configuration.requests)
+	cyan.Printf("- The number of threads : %d\n", configuration.clients)
 
 	// http 전송 url
 	requestURL := configuration.url
@@ -401,59 +438,37 @@ func main() {
 	// NGINX can handle a maximum of 512 concurrent connections. In newer versions, NGINX supports up to 1024 concurrent connections, by default.
 	// 이를 잘 확인하고 설정해야합니다.
 	t := http.DefaultTransport.(*http.Transport).Clone()
-	t.MaxIdleConns = 100    // connection pool 크기
-	t.MaxConnsPerHost = 100 // 호스트 별 최대 할당 connection
+	t.MaxIdleConns = 1000    // connection pool 크기
+	t.MaxConnsPerHost = 1000 // 호스트 별 최대 할당 connection
 	t.MaxIdleConnsPerHost = 100
-	t.IdleConnTimeout = 30 * time.Second
+	t.IdleConnTimeout = time.Duration(configuration.client_timeout) * time.Second
 
 	// 클라이언트 설정 및 timeout
 	client := &http.Client{
-		Timeout:   30 * time.Second,
+		Timeout:   time.Duration(configuration.client_timeout) * time.Second,
 		Transport: t,
 	}
 
 	// 스레드 싱크 맵
 	var contexts = &sync.Map{}
 	var results = &sync.Map{}
-
 	startTime := time.Now()
+
 	// 멀티 스레드 http request
 	for i := 0; i < int(number_worker); i++ {
 		wg.Add(1)
 		go worker(nb, configuration.randomJson, mutex, contexts, wg, requestURL, client, int(transferRatePerSecond/number_worker), i, results)
 	}
-	fmt.Println("\t=> Proceeding... Please wait until getting all the responses", int(configuration.requests))
 
 	wg.Add(int(configuration.requests))
 	go HandleResponse(nb, wg, int(configuration.requests))
-	wg.Wait()
-
-	elapsedTime := time.Since(startTime)
-
-	avg := 0.0
-	max_response_time := 0.0
-	min_response_time := 0.0
-
-	results.Range(func(k, v interface{}) bool {
-		sums := v.([]float64)
-		avg += sums[0]
-		max_response_time += sums[1]
-		min_response_time += sums[2]
-		return true
-	})
-
-	boldGreen.Printf("\t[RESULTS] Elapsed Time : %s\n", elapsedTime)
-	// avg_str := fmt.Sprintf("%.2f", avg/float64(number_worker))
-	// max_resp_str := fmt.Sprintf("%.2f", max_response_time*1000/float64(number_worker))
-	// min_resp_str := fmt.Sprintf("%.2f", min_response_time*1000/float64(number_worker))
-
-	// fmt.Println("\t[RESULTS] AVG : ", avg_str, "MAX_RESPONSE_TIME : ", max_resp_str, "MIN_RESPONSE_TIME : ", min_resp_str)
-
-	// // 성공한 http request 개수 확인
-	// contexts.Range(func(k, v interface{}) bool {
-	// 	fmt.Println("\t[RESULTS] Response status code: ", k, ", How many?: ", v)
-	// 	return true
-	// })
-	PrintMemUsage()
 	runtime.GC()
+	wg.Wait()
+	elapsedTime := time.Since(startTime).Seconds()
+
+	fmt.Printf("Finished! ( Total Elapsed Time : %.4f seconds ) \nNow you can see response time series graph in local machine => http://localhost:8022 \n\n", elapsedTime)
+
+	http.HandleFunc("/", httpserver)
+	http.ListenAndServe(":8022", nil)
+
 }
