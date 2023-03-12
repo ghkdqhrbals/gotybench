@@ -2,12 +2,7 @@
 
 ![](img/24.gif)
 
-제 목표는 **초당 1000건 이상의 api 를 견딜 수 있는 서버를 만드는 것**입니다. 즉, 초당 1000건을 테스트 해봐야된다는 소리겠죠? 
-
-그러기 위해서는 동시다발적으로 api를 전송하는 툴이 필요한데, 문제는 **대부분의 툴들이 Fuzzing된 Json 파일을 지원하지 않는다**는 것입니다. 즉, 기존 툴들은 **1. Json을 랜덤으로 생성해서 파일로 저장하고** -> **2. 이를 읽어서 다량으로 전송** 이 두 가지 과정을 거쳐가야만 해야하기에 다소 불편하였습니다.
-> 기존 툴들 정리 : [HTTP Benchmark Tools](https://github.com/denji/awesome-http-benchmark)
-
-**그래서 gotybench(HTTP benchmark tool)은 다음을 목표로 설계 및 제작하였습니다.**
+**gotybench(HTTP benchmark tool)은 다음을 목표로 설계 및 제작하였습니다.**
 
 1. **테스트 동시성 보장** : goroutine 경량 멀티 스레드를 사용하였으며, 채널을 통해 통신하도록 설정하였습니다.
 2. **다이나믹 Structure 을 통한 Fuzzed Json 오브젝트 생성** : 사용자가 key와 value type들만 설정해주면 자동으로 랜덤한 json 오브젝트를 생성하도록 제작하였습니다.
