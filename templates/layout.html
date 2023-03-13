@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="public/css/format.css">
+    <title>Results</title>
+</head>
+
+<body>
+<h2>
+gotybench HTTP Benchmark Logs
+</h2>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Time</th>
+                <th>Url</th>
+                <th>Threads</th>
+                <th>Requests</th>
+                <th>Results</th>
+                <th>AvgRes(ms)</th>
+                <th>MaxRes(ms)</th>
+                <th>MinRes(ms)</th>
+            </tr>
+        </thead>
+
+        <tbody>
+            {{ range . }}
+            <tr>
+                <td><a href="public/graph/{{.Time}}.html">{{ .Time }}</a></td>
+                <td>{{ .Url }}</td>
+                <td>{{ .Threads }}</td>
+                <td>{{ .Requests }}</td>
+                <td>{{ .Result }}</td>
+                <td>{{ .AvgResponse }}</td>
+                <td>{{ .MaxResponse }}</td>
+                <td>{{ .MinResponse }}</td>
+                
+            </tr>
+            {{ end }}
+        </tbody>
+    </table>
+
+</body>
+
+</html>

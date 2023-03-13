@@ -2,18 +2,22 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"math"
 	"math/rand"
+	"net"
 	"net/http"
 	"os"
 	"runtime"
 	"strconv"
 	"strings"
 	"sync"
+	"text/template"
 	"time"
 
 	"github.com/fatih/color"
@@ -30,13 +34,40 @@ var (
 	body           string
 	method         string
 	client_timeout int64
-	hp             string       // help flag
+	hp             string // help flag
+	openServer     *bool
 	line2web       *charts.Line // Response 시간을 웹에 표시
-	infos          = fmt.Sprintf("\n| - Support Json Type -\t|\n| * int \t\t|\n| * float \t\t|\n| * string \t\t|\n| * boolean \t\t|")
-	randomKr       = []rune("김이박최정강조윤장임한오서신권황안송류전홍고문양손배조백허유남심노정하곽성차주우구신임나전민유진지엄채원천방공강현함변염양변여추노도소신석선설마길주연방위표명기반왕금옥육인맹제모장남탁국여진어은편구용")
+
+	infos    = fmt.Sprintf("\n| - Support Json Type -\t|\n| * int \t\t|\n| * float \t\t|\n| * string \t\t|\n| * boolean \t\t|")
+	randomKr = []rune("김이박최정강조윤장임한오서신권황안송류전홍고문양손배조백허유남심노정하곽성차주우구신임나전민유진지엄채원천방공강현함변염양변여추노도소신석선설마길주연방위표명기반왕금옥육인맹제모장남탁국여진어은편구용")
+
+	green      = color.New(color.FgGreen)
+	boldGreen  = color.New(color.FgGreen).Add(color.Bold)
+	yellow     = color.New(color.FgHiYellow)
+	boldYellow = color.New(color.FgHiYellow).Add(color.Bold)
+	mg         = color.New(color.FgHiMagenta)
+	boldMg     = color.New(color.FgHiMagenta).Add(color.Bold)
+	red        = color.New(color.FgHiRed)
+	boldRed    = color.New(color.FgHiRed).Add(color.Bold)
+	boldCyan   = color.New(color.FgCyan).Add(color.Bold)
+	cyan       = color.New(color.FgCyan)
 )
 
-const randomEn = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+const (
+	randomEn = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	YYYYMMDD = "2006-01-02"
+)
+
+type Results struct {
+	Time        string
+	Url         string
+	Threads     string
+	Requests    string
+	Result      string
+	AvgResponse string
+	MaxResponse string
+	MinResponse string
+}
 
 type nonBlocking struct {
 	Response    *http.Response
@@ -60,10 +91,82 @@ func init() {
 	flag.Int64Var(&client_timeout, "t", 30, "Request Timeout(second)")
 	flag.StringVar(&url, "u", "", "Request URL")
 	flag.StringVar(&body, "j", "", "Inform us your Json key/type to FUZZING with no space between key and type\n\"[KEY1,TYPE1,KEY2,TYPE2,...]\" "+infos)
+	openServer = flag.Bool("s", false, "opening log server")
 	rand.Seed(time.Now().UnixNano())
 }
 
 func NewConfiguration() *Configuration {
+
+	if *openServer {
+		resultMap := make(map[string]Results)
+
+		fs := http.FileServer(http.Dir("public"))
+		http.Handle("/public/", http.StripPrefix("/public/", fs))
+
+		files, err := ioutil.ReadDir("./public/graph/")
+
+		var fileNames []string
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		for _, file := range files {
+			fileNames = append(fileNames, strings.Split(file.Name(), ".")[0])
+		}
+
+		content, err := ioutil.ReadFile("./public/results/rs.text")
+
+		if err != nil {
+			log.Fatal(err)
+		}
+		sc := strings.Split(string(content), "\n")
+		for _, s := range sc {
+			if s == "" {
+				continue
+			}
+			splitedResults := strings.Split(s, "|")
+			resultMap[splitedResults[0]] = Results{
+				Time:        splitedResults[0],
+				Url:         splitedResults[1],
+				Threads:     splitedResults[2],
+				Requests:    splitedResults[3],
+				Result:      splitedResults[4],
+				AvgResponse: splitedResults[5],
+				MaxResponse: splitedResults[6],
+				MinResponse: splitedResults[7],
+			}
+		}
+
+		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			tmpl := template.Must(template.ParseFiles("templates/layout.html"))
+			var rs []Results
+			for _, fileName := range fileNames {
+				rs = append(rs, resultMap[fileName])
+			}
+			tmpl.Execute(w, rs)
+		})
+
+		server := &http.Server{Addr: ":8022", Handler: nil}
+		boldYellow.Printf("Local Server Opened! check here : http://localhost%s\n", server.Addr)
+
+		go func() {
+			server.ListenAndServe()
+		}()
+
+		exit := ""
+		fmt.Print("Do you want to exit? [y] ")
+		fmt.Scanln(&exit)
+
+		if exit == "y" {
+			err := server.Shutdown(context.Background())
+			// can't do much here except for logging any errors
+			if err != nil {
+				log.Printf("error during shutdown: %v\n", err)
+			}
+			os.Exit(1)
+			// notifying the main goroutine that we are done
+		}
+	}
 
 	if hp != "" {
 		flag.Usage()
@@ -184,18 +287,6 @@ func errorKeyType(key string) {
 	os.Exit(1)
 }
 
-// PrintMemUsage outputs the current, total and OS memory being used. As well as the number
-// of garage collection cycles completed.
-func PrintMemUsage() {
-	var m runtime.MemStats
-	runtime.ReadMemStats(&m)
-	boldYellow.Printf("\n [Memory Usage]\n")
-	yellow.Printf("- Heap size = %v MB\n", bToMb(m.Alloc))
-	yellow.Printf("- Cumulative Heap size = %v MB\n", bToMb(m.TotalAlloc))
-	yellow.Printf("- All goroutine size = %v MB\n", bToMb(m.Sys))
-	yellow.Printf("- GC cycle 횟수 = %v\n\n", m.NumGC)
-}
-
 func goid() int {
 	var buf [64]byte
 	n := runtime.Stack(buf[:], false)
@@ -295,17 +386,23 @@ func MaxParallelism() int {
 	return numCPU
 }
 
-func lineBase(items []opts.LineData, tm []time.Time) *charts.Line {
+func lineBase(details string, items []opts.LineData, tm []time.Time, numThread string, numRequest string) *charts.Line {
 	line := charts.NewLine()
 	line.SetGlobalOptions(
-		charts.WithTitleOpts(opts.Title{Title: "[gotybench] HTTP Benchmark Graph", Subtitle: "Response Time (Second) "}),
+		charts.WithTitleOpts(opts.Title{Title: "[gotybench] HTTP Benchmark Graph ( numThread:" + numThread + ", numRequest:" + numRequest + " )", Subtitle: "Response Time (Second) "}),
 	)
 	line.SetXAxis(tm).
-		AddSeries("Response Time ", items)
+		AddSeries("Response Time ", items).
+		SetSeriesOptions(charts.WithLineChartOpts(opts.LineChart{Smooth: true}))
+	f, err := os.Create("public/graph/" + details + ".html")
+	if err != nil {
+		log.Print(err)
+	}
+	_ = line.Render(f)
 	return line
 }
 
-func HandleResponse(nb chan nonBlocking, wg *sync.WaitGroup, requests int) {
+func HandleResponse(url string, nb chan nonBlocking, wg *sync.WaitGroup, threads int, requests int) {
 
 	avg := 0.0
 	max_response_time := 0.0
@@ -372,28 +469,42 @@ func HandleResponse(nb chan nonBlocking, wg *sync.WaitGroup, requests int) {
 			green.Printf("- Average response time \t: %.2f ms\n", avg*1000)
 			green.Printf("- Max response time     \t: %.2f ms\n", max_response_time*1000)
 			green.Printf("- Min response time     \t: %.2f ms\n", min_response_time*1000.0)
-			PrintMemUsage()
-			line2web = lineBase(items, tm)
+
+			dl := "|"
+			details := time.Now().Format("2006-01-02:15:04:05")
+			fmt.Println(details)
+
+			var mem runtime.MemStats
+			runtime.ReadMemStats(&mem)
+			boldYellow.Printf("\n [Memory Usage]\n")
+			yellow.Printf("- Heap size = %v MB\n", bToMb(mem.Alloc))
+			yellow.Printf("- Cumulative Heap size = %v MB\n", bToMb(mem.TotalAlloc))
+			yellow.Printf("- All goroutine size = %v MB\n", bToMb(mem.Sys))
+			yellow.Printf("- GC cycle 횟수 = %v\n\n", mem.NumGC)
+
+			line2web = lineBase(details, items, tm, strconv.Itoa(threads), strconv.Itoa(requests))
+			f, err := os.OpenFile("public/results/rs.text",
+				os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+			if err != nil {
+				log.Println(err)
+			}
+			defer f.Close()
+			if _, err := f.WriteString(details + dl +
+				url + dl +
+				strconv.Itoa(threads) + dl +
+				strconv.Itoa(requests) + dl +
+				fmt.Sprintf("%v", m) + dl +
+				fmt.Sprintf("%.2f", avg*1000) + dl +
+				fmt.Sprintf("%.2f", max_response_time*1000) + dl +
+				fmt.Sprintf("%.2f", min_response_time*1000) + "\n"); err != nil {
+				log.Println(err)
+			}
+
 		}
 		wg.Done()
 	}
 
 }
-
-var green = color.New(color.FgGreen)
-var boldGreen = color.New(color.FgGreen).Add(color.Bold)
-
-var yellow = color.New(color.FgHiYellow)
-var boldYellow = color.New(color.FgHiYellow).Add(color.Bold)
-
-var mg = color.New(color.FgHiMagenta)
-var boldMg = color.New(color.FgHiMagenta).Add(color.Bold)
-
-var red = color.New(color.FgHiRed)
-var boldRed = color.New(color.FgHiRed).Add(color.Bold)
-
-var boldCyan = color.New(color.FgCyan).Add(color.Bold)
-var cyan = color.New(color.FgCyan)
 
 func generateLineItems() []opts.LineData {
 	items := make([]opts.LineData, 0)
@@ -407,8 +518,20 @@ func httpserver(w http.ResponseWriter, _ *http.Request) {
 	line2web.Render(w)
 }
 
-func main() {
+// Local address of the running system
+func getLocalAddress() net.IP {
+	con, error := net.Dial("udp", "8.8.8.8:80")
+	if error != nil {
+		log.Fatal(error)
+	}
+	defer con.Close()
 
+	localAddress := con.LocalAddr().(*net.UDPAddr)
+
+	return localAddress.IP
+}
+
+func main() {
 	wg := &sync.WaitGroup{}
 	var mutex = &sync.RWMutex{}
 	rand.Seed(time.Now().UnixNano())
@@ -461,14 +584,37 @@ func main() {
 	}
 
 	wg.Add(int(configuration.requests))
-	go HandleResponse(nb, wg, int(configuration.requests))
+	go HandleResponse(requestURL, nb, wg, int(number_worker), int(configuration.requests))
 	runtime.GC()
 	wg.Wait()
+
 	elapsedTime := time.Since(startTime).Seconds()
 
-	fmt.Printf("Finished! ( Total Elapsed Time : %.4f seconds ) \nNow you can see response time series graph in local machine => http://localhost:8022 \n\n", elapsedTime)
+	var exit string
+	laddr := getLocalAddress().String()
+	fmt.Printf("Finished! ( Total Elapsed Time : %.4f seconds ) \nNow you can see response time series graph in local machine => http://"+laddr+":8022 \n\n", elapsedTime)
+
+	wg.Add(1)
 
 	http.HandleFunc("/", httpserver)
-	http.ListenAndServe(":8022", nil)
+	server := &http.Server{Addr: ":8022", Handler: nil}
 
+	go func() {
+		server.ListenAndServe()
+	}()
+
+	fmt.Print("Do you want to exit? [y] ")
+	fmt.Scanln(&exit)
+
+	if exit == "y" {
+		err := server.Shutdown(context.Background())
+		// can't do much here except for logging any errors
+		if err != nil {
+			log.Printf("error during shutdown: %v\n", err)
+		}
+		// notifying the main goroutine that we are done
+		wg.Done()
+	}
+
+	wg.Wait()
 }

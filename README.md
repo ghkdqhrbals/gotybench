@@ -1,6 +1,6 @@
 # Introduction(gotybench)
 
-![](img/24.gif)
+![](image/24.gif)
 
 **gotybench(HTTP benchmark tool)은 다음을 목표로 설계 및 제작하였습니다.**
 
@@ -83,5 +83,5 @@ Now you can see response time series graph in local machine => http://localhost:
 
 As you can see here, we send 10K http request to our server and get responses with status code 200 within 12 seconds.
 
-![img](img/27.png)
-![img](img/28.png)
+![img](image/27.png)
+![img](image/28.png)
