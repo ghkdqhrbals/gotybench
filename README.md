@@ -1,6 +1,6 @@
 # Introduction(gotybench)
 
-![](image/24.gif)
+![](img/24.gif)
 
 **gotybench(HTTP benchmark tool)은 다음을 목표로 설계 및 제작하였습니다.**
 
@@ -17,6 +17,7 @@
 | -r     | HTTP POST request 개수를 해당 옵션으로 설정할 수 있습니다.                                                                                                                                                                                                                   |
 | -t     | 벤치마크 클라이언트의 network connection 의 timeout을 해당 옵션으로 설정할 수 있습니다.                                                                                                                                                                                      |
 | -u     | 요청하는 URL을 설정할 수 있습니다.                                                                                                                                                                                                                                           |
+| -s     | 로깅된 이전 벤치마크 데이터 및 그래프들을 서버에 띄웁니다.                                                                                                                                                                                                                   |
 
 **이중 특히 `-j` 옵션은 Dynamic Struct를 차용함으로써, 오브젝트의 private 필드는 사용자의 입력값에 따라 구조가 변경됩니다!**
 
@@ -81,7 +82,9 @@ Now you can see response time series graph in local machine => http://localhost:
 
 # Results
 
-As you can see here, we send 10K http request to our server and get responses with status code 200 within 12 seconds.
-
-![img](image/27.png)
-![img](image/28.png)
+### **벤치마크 결과 확인**
+![img](img/27.png)
+### **시간에 따른 응답 RTT 그래프**
+![img](img/28.png)
+### **벤치마크 로깅**
+![img](img/29.png)
