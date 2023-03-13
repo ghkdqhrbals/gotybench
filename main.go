@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -13,6 +14,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -386,6 +388,25 @@ func MaxParallelism() int {
 	return numCPU
 }
 
+func ensureDir(dirName string) error {
+	err := os.Mkdir(dirName, 0777)
+	if err == nil {
+		return nil
+	}
+	if os.IsExist(err) {
+		// check that the existing path is a directory
+		info, err := os.Stat(dirName)
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() {
+			return errors.New("path exists but is not a directory")
+		}
+		return nil
+	}
+	return err
+}
+
 func lineBase(details string, items []opts.LineData, tm []time.Time, numThread string, numRequest string) *charts.Line {
 	line := charts.NewLine()
 	line.SetGlobalOptions(
@@ -472,7 +493,6 @@ func HandleResponse(url string, nb chan nonBlocking, wg *sync.WaitGroup, threads
 
 			dl := "|"
 			details := time.Now().Format("2006-01-02:15:04:05")
-			fmt.Println(details)
 
 			var mem runtime.MemStats
 			runtime.ReadMemStats(&mem)
@@ -482,6 +502,16 @@ func HandleResponse(url string, nb chan nonBlocking, wg *sync.WaitGroup, threads
 			yellow.Printf("- All goroutine size = %v MB\n", bToMb(mem.Sys))
 			yellow.Printf("- GC cycle 횟수 = %v\n\n", mem.NumGC)
 
+			path, err := filepath.Abs("./")
+
+			if err := ensureDir(path + "/public/graph"); err != nil {
+				fmt.Println("1 Directory creation failed with error: " + err.Error())
+				os.Exit(1)
+			}
+			if err := ensureDir(path + "/public/results"); err != nil {
+				fmt.Println("2 Directory creation failed with error: " + err.Error())
+				os.Exit(1)
+			}
 			line2web = lineBase(details, items, tm, strconv.Itoa(threads), strconv.Itoa(requests))
 			f, err := os.OpenFile("public/results/rs.text",
 				os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
