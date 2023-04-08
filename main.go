@@ -56,8 +56,10 @@ var (
 )
 
 const (
-	randomEn = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
-	YYYYMMDD = "2006-01-02"
+	randomEn            = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	YYYYMMDD            = "2006-01-02"
+	rangeOfRandomString = 10
+	rangeOfRandomInt    = 10000
 )
 
 type Results struct {
@@ -243,11 +245,11 @@ func returnDefaults(column_type string) interface{} {
 func returnRandomByTypes(column_type string) string {
 	switch column_type {
 	case "int":
-		return strconv.Itoa(rand.Intn(1000))
+		return strconv.Itoa(rand.Intn(rangeOfRandomInt))
 	case "double":
 		return fmt.Sprintf("%f", rand.Float64())
 	case "string":
-		return "\"" + RandStringEn(10) + "\""
+		return "\"" + RandStringEn(rangeOfRandomString) + "\""
 	case "boolean":
 		return "false"
 	}
@@ -348,6 +350,7 @@ func worker(nb chan nonBlocking, jsons map[string]string, mutex *sync.RWMutex, c
 
 		// 요청 생성
 		req, err := http.NewRequest(http.MethodPost, requestURL, bodyReader)
+		req.Close = true
 		if err != nil {
 			fmt.Println(err)
 			req.Body.Close()
