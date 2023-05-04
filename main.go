@@ -32,6 +32,7 @@ import (
 var (
 	requests       int64
 	url            string
+	info           string
 	clients        int64
 	body           string
 	method         string
@@ -71,6 +72,7 @@ type Results struct {
 	AvgResponse string
 	MaxResponse string
 	MinResponse string
+	Info        string
 }
 
 type nonBlocking struct {
@@ -81,6 +83,7 @@ type nonBlocking struct {
 
 type Configuration struct {
 	url            string
+	info           string
 	method         string
 	requests       int64
 	clients        int64
@@ -94,6 +97,7 @@ func init() {
 	flag.Int64Var(&clients, "c", 100, "The number of thread")
 	flag.Int64Var(&client_timeout, "t", 30, "Request Timeout(second)")
 	flag.StringVar(&url, "u", "", "Request URL")
+	flag.StringVar(&info, "i", "", "Descriyption information")
 	flag.StringVar(&body, "j", "", "Inform us your Json key/type to FUZZING with no space between key and type\n\"[KEY1,TYPE1,KEY2,TYPE2,...]\" "+infos)
 	openServer = flag.Bool("s", false, "opening log server")
 	rand.Seed(time.Now().UnixNano())
@@ -129,6 +133,7 @@ func NewConfiguration() *Configuration {
 				continue
 			}
 			splitedResults := strings.Split(s, "|")
+			splitedResults = append(splitedResults, "")
 			resultMap[splitedResults[0]] = Results{
 				Time:        splitedResults[0],
 				Url:         splitedResults[1],
@@ -138,6 +143,7 @@ func NewConfiguration() *Configuration {
 				AvgResponse: splitedResults[5],
 				MaxResponse: splitedResults[6],
 				MinResponse: splitedResults[7],
+				Info:        splitedResults[8],
 			}
 		}
 
@@ -194,6 +200,10 @@ func NewConfiguration() *Configuration {
 		clients:        int64(100),
 		client_timeout: int64(30),
 		randomJson:     map[string]string{},
+	}
+
+	if info != "" {
+		configuration.info = info
 	}
 
 	if url != "" {
@@ -353,7 +363,6 @@ func worker(nb chan nonBlocking, jsons map[string]string, mutex *sync.RWMutex, c
 		req.Close = true
 		if err != nil {
 			fmt.Println(err)
-			req.Body.Close()
 		}
 
 		// json 헤더 설정
@@ -363,6 +372,7 @@ func worker(nb chan nonBlocking, jsons map[string]string, mutex *sync.RWMutex, c
 		// 실제 요청 전송 및 반환
 		res, err := client.Do(req)
 		elapsedTime := time.Since(startTime).Seconds()
+
 		nb <- nonBlocking{
 			Response:    res,
 			Error:       err,
@@ -371,8 +381,7 @@ func worker(nb chan nonBlocking, jsons map[string]string, mutex *sync.RWMutex, c
 
 		if err != nil {
 			boldRed.Printf("ERROR MESSAGE:%s\n", err.Error())
-			os.Exit(1)
-			continue
+			// os.Exit(1)
 		} else {
 			m[res.StatusCode] += 1
 			res.Body.Close()
@@ -426,7 +435,7 @@ func lineBase(details string, items []opts.LineData, tm []time.Time, numThread s
 	return line
 }
 
-func HandleResponse(url string, nb chan nonBlocking, wg *sync.WaitGroup, threads int, requests int) {
+func HandleResponse(url string, nb chan nonBlocking, wg *sync.WaitGroup, threads int, requests int, info string) {
 
 	avg := 0.0
 	max_response_time := 0.0
@@ -529,7 +538,8 @@ func HandleResponse(url string, nb chan nonBlocking, wg *sync.WaitGroup, threads
 				fmt.Sprintf("%v", m) + dl +
 				fmt.Sprintf("%.2f", avg*1000) + dl +
 				fmt.Sprintf("%.2f", max_response_time*1000) + dl +
-				fmt.Sprintf("%.2f", min_response_time*1000) + "\n"); err != nil {
+				fmt.Sprintf("%.2f", min_response_time*1000) + dl +
+				info + "\n"); err != nil {
 				log.Println(err)
 			}
 
@@ -593,11 +603,12 @@ func main() {
 
 	// NGINX can handle a maximum of 512 concurrent connections. In newer versions, NGINX supports up to 1024 concurrent connections, by default.
 	// 이를 잘 확인하고 설정해야합니다.
-	t := http.DefaultTransport.(*http.Transport).Clone()
-	t.MaxIdleConns = 1000    // connection pool 크기
-	t.MaxConnsPerHost = 1000 // 호스트 별 최대 할당 connection
-	t.MaxIdleConnsPerHost = 100
-	t.IdleConnTimeout = time.Duration(configuration.client_timeout) * time.Second
+	t := &http.Transport{
+		MaxIdleConns:        10000,
+		MaxIdleConnsPerHost: 10000,
+		MaxConnsPerHost:     10000,
+		IdleConnTimeout:     time.Duration(configuration.client_timeout) * time.Second,
+	}
 
 	// 클라이언트 설정 및 timeout
 	client := &http.Client{
@@ -617,7 +628,7 @@ func main() {
 	}
 
 	wg.Add(int(configuration.requests))
-	go HandleResponse(requestURL, nb, wg, int(number_worker), int(configuration.requests))
+	go HandleResponse(requestURL, nb, wg, int(number_worker), int(configuration.requests), configuration.info)
 	runtime.GC()
 	wg.Wait()
 
