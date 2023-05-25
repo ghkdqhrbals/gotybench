@@ -424,13 +424,16 @@ func lineBase(details string, items []opts.LineData, tm []time.Time, numThread s
 	line.SetGlobalOptions(
 		charts.WithTitleOpts(opts.Title{Title: "[gotybench] HTTP Benchmark Graph ( numThread:" + numThread + ", numRequest:" + numRequest + " )", Subtitle: "Response Time (Second) "}),
 	)
+
 	line.SetXAxis(tm).
 		AddSeries("Response Time ", items).
 		SetSeriesOptions(charts.WithLineChartOpts(opts.LineChart{Smooth: true}))
+	line.SetGlobalOptions(charts.WithYAxisOpts(opts.YAxis{GridIndex: 0, Name: "", Type: "value", Show: true, Scale: true, Min: "0", Max: "40", SplitLine: &opts.SplitLine{Show: true}}))
 	f, err := os.Create("public/graph/" + details + ".html")
 	if err != nil {
 		log.Print(err)
 	}
+
 	_ = line.Render(f)
 	return line
 }
