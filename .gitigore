@@ -1,2 +1,5 @@
+.idea
+
 public/graph/*.html
+
 public/results/*.text
