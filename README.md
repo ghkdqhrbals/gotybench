@@ -1,15 +1,17 @@
-# Introduction(gotybench)
+# Introduction
+
+* GotyBench was designed for **testing server load** with multiple current threads
+> Currently we service only for HTTP Post request! Later we will add Get/Put Methods
 
 ![](img/24.gif)
 
-> Currently we service only for HTTP Post request! Later we will add Get/Put Methods
 
 # Goal of GotyBench
 
-1. Concurrency : Developed with goroutine lightweight multi-threaded, set to communicate through channels.
+1. Testing with multiple concurrency : Developed with goroutine lightweight multi-threaded, set to communicate through channels.
 2. Automatically generate fuzzed json object : It is designed to automatically create a random json object when the user sets only the key and value type.
     * ex) "gotybench -j [userId,string,userAge,int]" : Set the value of `userId` to a random string. Also set the value of `userAge` to a random int.
-3. Log Server : By `-s` option, we can check all benchmark logs([http://localhost:8022](http://localhost:8022))
+3. Log server : By `-s` option, we can check all benchmark logs([http://localhost:8022](http://localhost:8022))
 
 # Options
 | Option | Detail                                                                                                                                                                                                                                                                                               |
