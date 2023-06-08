@@ -2,24 +2,26 @@
 
 ![](img/24.gif)
 
-**gotybench(HTTP benchmark tool)은 다음을 목표로 설계 및 제작하였습니다.**
+> Currently we service only for HTTP Post request! Later we will add Get/Put Methods
 
-1. **테스트 동시성 보장** : goroutine 경량 멀티 스레드를 사용하였으며, 채널을 통해 통신하도록 설정하였습니다.
-2. **다이나믹 Structure 을 통한 Fuzzed Json 오브젝트 생성** : 사용자가 key와 value type들만 설정해주면 자동으로 랜덤한 json 오브젝트를 생성하도록 제작하였습니다.
-    * ex) "gotybench -j [userId,string,userAge,int]" : userId의 value를 랜덤한 string으로 설정합니다. 또한 userAge의 value를 랜덤한 int로 설정합니다. 
+# Goal of GotyBench
+
+1. Concurrency : Developed with goroutine lightweight multi-threaded, set to communicate through channels.
+2. Automatically generate fuzzed json object : It is designed to automatically create a random json object when the user sets only the key and value type.
+    * ex) "gotybench -j [userId,string,userAge,int]" : Set the value of `userId` to a random string. Also set the value of `userAge` to a random int.
+3. Log Server : By `-s` option, we can check all benchmark logs([http://localhost:8022](http://localhost:8022))
 
 # Options
-| Option | Detail                                                                                                                                                                                                                                                                       |
-| ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| -c     | 동시처리가능한 스레드 개수를 해당 옵션으로 설정할 수 있습니다.                                                                                                                                                                                                               |
-| -h     | 옵션들의 설명을 확인할 수 있습니다.                                                                                                                                                                                                                                          |
-| -j     | 핵심적인 Fuzzing 기능입니다. <br> json object를 해당 옵션으로 key/type을 설정하면, 랜덤한 value의 json obejct가 생성됩니다.<br>Fuzzing이 지원되는 type 은 4가지로 아래와 같습니다.<br>int, float, string, boolean<br>Usage Example<br>ex) `-j "[userId,string,userAge,int]"` |
-| -r     | HTTP POST request 개수를 해당 옵션으로 설정할 수 있습니다.                                                                                                                                                                                                                   |
-| -t     | 벤치마크 클라이언트의 network connection 의 timeout을 해당 옵션으로 설정할 수 있습니다.                                                                                                                                                                                      |
-| -u     | 요청하는 URL을 설정할 수 있습니다.                                                                                                                                                                                                                                           |
-| -s     | 로깅된 이전 벤치마크 데이터 및 그래프들을 서버에 띄웁니다.                                                                                                                                                                                                                   |
-
-**이중 특히 `-j` 옵션은 Dynamic Struct를 차용함으로써, 오브젝트의 private 필드는 사용자의 입력값에 따라 구조가 변경됩니다!**
+| Option | Detail                                                                                                                                                                                                                                                                                               |
+|--------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| -c     | The number of concurrent thread                                                                                                                                                                                                                                                                      |
+| -h     | See all options                                                                                                                                                                                                                                                                                      |
+| -j     | Generate fuzzed json object <br> If you set the key/type of the json object with the corresponding option, a json object with a random value is created.<br>Four types of fuzzing are supported as follows.<br>int, float, string, boolean<br>Usage Example<br>ex) `-j "[userId,string,userAge,int]"` |
+| -r     | The number of HTTP Post request                                                                                                                                                                                                                                                                      |
+| -t     | The timeout of the network connection of the benchmark client                                                                                                                                                                                                                                        |
+| -u     | Request URL                                                                                                                                                                                                                                                                                          |
+| -s     | Access log server                                                                                                                                                                                                                                                                                    |
+| -i     | Add additional information                                                                                                                                                                                                                                                                           |
 
 # Before we started, we need to get ...
 1. run `go get github.com/fatih/color` for coloring your terminal
@@ -82,9 +84,9 @@ Now you can see response time series graph in local machine => http://localhost:
 
 # Results
 
-### **벤치마크 결과 확인**
+### **Benchmark Results**
 ![img](img/27.png)
-### **시간에 따른 응답 RTT 그래프**
+### **Response RTT graph over time**
 ![img](img/28.png)
-### **벤치마크 로깅**
+### **Log Server**
 ![img](img/29.png)
