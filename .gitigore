@@ -1,2 +1,2 @@
-public/graph/
-public/results/
+/public/graph/*
+/public/results/*
