@@ -1,4 +1,4 @@
 .idea
 
-public/graph/*
+public/graph/
 public/results/*
