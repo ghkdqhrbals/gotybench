@@ -1,3 +1,8 @@
+// Copyright 2024 @ghkdqhrbals Authors
+// This file is part of the gotybench library.
+//
+// The gotybench library is free software: you can redistribute it and/or modify
+// it under the terms of the MIT License.
 package main
 
 import (
@@ -7,7 +12,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"math"
 	"math/rand"
@@ -19,30 +23,21 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"text/template"
 	"time"
 
+	"testapi.com/m/benchmark"
 	"github.com/fatih/color"
 	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/opts"
 	"github.com/gosuri/uilive"
+	
 	dynamicstruct "github.com/ompluscator/dynamic-struct"
+
 )
 
 var (
-	requests       int64
-	url            string
-	info           string
-	clients        int64
-	body           string
-	method         string
-	client_timeout int64
-	hp             string // help flag
-	openServer     *bool
+	flags *benchmark.FlagParam
 	line2web       *charts.Line // Response 시간을 웹에 표시
-
-	infos    = fmt.Sprintf("\n| - Support Json Type -\t|\n| * int \t\t|\n| * float \t\t|\n| * string \t\t|\n| * boolean \t\t|")
-	randomKr = []rune("김이박최정강조윤장임한오서신권황안송류전홍고문양손배조백허유남심노정하곽성차주우구신임나전민유진지엄채원천방공강현함변염양변여추노도소신석선설마길주연방위표명기반왕금옥육인맹제모장남탁국여진어은편구용")
 
 	green      = color.New(color.FgGreen)
 	boldGreen  = color.New(color.FgGreen).Add(color.Bold)
@@ -54,13 +49,6 @@ var (
 	boldRed    = color.New(color.FgHiRed).Add(color.Bold)
 	boldCyan   = color.New(color.FgCyan).Add(color.Bold)
 	cyan       = color.New(color.FgCyan)
-)
-
-const (
-	randomEn            = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
-	YYYYMMDD            = "2006-01-02"
-	rangeOfRandomString = 10
-	rangeOfRandomInt    = 10000
 )
 
 type Results struct {
@@ -81,161 +69,9 @@ type nonBlocking struct {
 	ElapsedTime float64
 }
 
-type Configuration struct {
-	url            string
-	info           string
-	method         string
-	requests       int64
-	clients        int64
-	randomJson     map[string]string
-	client_timeout int64
-}
-
 func init() {
-	flag.StringVar(&hp, "h", "", "see options")
-	flag.Int64Var(&requests, "r", 10000, "The number of request")
-	flag.Int64Var(&clients, "c", 100, "The number of thread")
-	flag.Int64Var(&client_timeout, "t", 30, "Request Timeout(second)")
-	flag.StringVar(&url, "u", "", "Request URL")
-	flag.StringVar(&info, "i", "", "Descriyption information")
-	flag.StringVar(&body, "j", "", "Inform us your Json key/type to FUZZING with no space between key and type\n\"[KEY1,TYPE1,KEY2,TYPE2,...]\" "+infos)
-	openServer = flag.Bool("s", false, "opening log server")
+	flags = benchmark.GetFlags()
 	rand.Seed(time.Now().UnixNano())
-}
-
-func NewConfiguration() *Configuration {
-
-	if *openServer {
-		resultMap := make(map[string]Results)
-
-		fs := http.FileServer(http.Dir("public"))
-		http.Handle("/public/", http.StripPrefix("/public/", fs))
-
-		files, err := ioutil.ReadDir("./public/graph/")
-
-		var fileNames []string
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		for _, file := range files {
-			fileNames = append(fileNames, strings.Split(file.Name(), ".")[0])
-		}
-
-		content, err := ioutil.ReadFile("./public/results/rs.text")
-
-		if err != nil {
-			log.Fatal(err)
-		}
-		sc := strings.Split(string(content), "\n")
-		for _, s := range sc {
-			if s == "" {
-				continue
-			}
-			splitedResults := strings.Split(s, "|")
-			splitedResults = append(splitedResults, "")
-			resultMap[splitedResults[0]] = Results{
-				Time:        splitedResults[0],
-				Url:         splitedResults[1],
-				Threads:     splitedResults[2],
-				Requests:    splitedResults[3],
-				Result:      splitedResults[4],
-				AvgResponse: splitedResults[5],
-				MaxResponse: splitedResults[6],
-				MinResponse: splitedResults[7],
-				Info:        splitedResults[8],
-			}
-		}
-
-		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-			tmpl := template.Must(template.ParseFiles("templates/layout.html"))
-			var rs []Results
-			for _, fileName := range fileNames {
-				rs = append(rs, resultMap[fileName])
-			}
-			tmpl.Execute(w, rs)
-		})
-
-		server := &http.Server{Addr: ":8022", Handler: nil}
-		boldYellow.Printf("Local Server Opened! check here : http://localhost%s\n", server.Addr)
-
-		go func() {
-			server.ListenAndServe()
-		}()
-
-		exit := ""
-		fmt.Print("Do you want to exit? [y] ")
-		fmt.Scanln(&exit)
-
-		if exit == "y" {
-			err := server.Shutdown(context.Background())
-			// can't do much here except for logging any errors
-			if err != nil {
-				log.Printf("error during shutdown: %v\n", err)
-			}
-			os.Exit(1)
-			// notifying the main goroutine that we are done
-		}
-	}
-
-	if hp != "" {
-		flag.Usage()
-		os.Exit(1)
-	}
-
-	if url == "" {
-		flag.Usage()
-		os.Exit(1)
-	}
-
-	if body == "" {
-		flag.Usage()
-		os.Exit(1)
-	}
-
-	configuration := &Configuration{
-		url:            "",
-		method:         http.MethodPost,
-		requests:       int64(10000),
-		clients:        int64(100),
-		client_timeout: int64(30),
-		randomJson:     map[string]string{},
-	}
-
-	if info != "" {
-		configuration.info = info
-	}
-
-	if url != "" {
-		configuration.url = url
-	}
-
-	if requests != 10000 {
-		configuration.requests = requests
-	}
-
-	if clients != 100 {
-		configuration.clients = clients
-	}
-
-	if client_timeout != 30 {
-		configuration.client_timeout = client_timeout
-	}
-
-	if body != "" {
-		body = strings.Replace(body, "[", "", -1)
-		body = strings.Replace(body, "]", "", -1)
-		temps := strings.Split(body, ",")
-		for i := 0; i < len(temps); i += 2 {
-			if i > len(temps)-2 {
-				errorKeyType(temps[i])
-				os.Exit(1)
-			}
-			configuration.randomJson[temps[i]] = temps[i+1]
-		}
-	}
-
-	return configuration
 }
 
 func returnDefaults(column_type string) interface{} {
@@ -252,87 +88,13 @@ func returnDefaults(column_type string) interface{} {
 	return "null"
 }
 
-func returnRandomByTypes(column_type string) string {
-	switch column_type {
-	case "int":
-		return strconv.Itoa(rand.Intn(rangeOfRandomInt))
-	case "double":
-		return fmt.Sprintf("%f", rand.Float64())
-	case "string":
-		return "\"" + RandStringEn(rangeOfRandomString) + "\""
-	case "boolean":
-		return "false"
-	}
-	return "null"
-}
-
-func dynamicstructs(jsons map[string]string) interface{} {
-	instance := dynamicstruct.NewStruct()
-	for key, val := range jsons {
-		instance.AddField(strings.ToUpper(key), returnDefaults(val), `json:"`+key+`"`)
-		fmt.Println(key, val)
-	}
-	return instance.Build().New()
-}
-
-func randomGeneratedData(jsons map[string]string) []byte {
-
-	data := ""
-	for key, val := range jsons {
-		if returnRandomByTypes(val) == "null" {
-			errorKeyType(key)
-			os.Exit(1)
-		}
-		data += "\"" + key + "\"" + ":" + returnRandomByTypes(val) + ","
-	}
-	// fmt.Println(data)
-
-	return []byte(`{` + data[:len(data)-1] + `}`)
-
-}
-
-func errorKeyType(key string) {
-	boldRed.Printf("[Key Error] %s 의 타입이 없습니다. 아래의 타입 중 하나를 선택해서 표기해주세요.\n", key)
-	fmt.Println("| - Support Json Type -\t|")
-	fmt.Println("| * int \t\t|")
-	fmt.Println("| * float \t\t|")
-	fmt.Println("| * string \t\t|")
-	fmt.Println("| * boolean \t\t|")
-	os.Exit(1)
-}
-
-func goid() int {
-	var buf [64]byte
-	n := runtime.Stack(buf[:], false)
-	idField := strings.Fields(strings.TrimPrefix(string(buf[:n]), "goroutine "))[0]
-	id, err := strconv.Atoi(idField)
-	if err != nil {
-		panic(fmt.Sprintf("cannot get goroutine id: %v", err))
-	}
-	return id
-}
-
-func RandStringEn(n int) string {
-	b := make([]byte, n)
-	for i := range b {
-		b[i] = randomEn[rand.Intn(len(randomEn))]
-	}
-	return string(b)
-}
-
-func RandStringKr(n int) string {
-	b := make([]rune, n)
-	for i := range b {
-		b[i] = randomKr[rand.Intn(len(randomKr))]
-	}
-	return string(b)
-}
-
+// byte to MegaByte
 func bToMb(b uint64) uint64 {
 	return b / 1024 / 1024
 }
 
-func worker(nb chan nonBlocking, jsons map[string]string, mutex *sync.RWMutex, contexts *sync.Map, wg *sync.WaitGroup, requestURL string, client *http.Client, transferRatePerSecond int, number_worker int, results *sync.Map) {
+// 요청을 전송하는 스레드 함수
+func worker(nb chan nonBlocking, jsons map[string]string, mutex *sync.RWMutex, contexts *sync.Map, wg *sync.WaitGroup, requestURL string, client *http.Client, transferRatePerSecond int) {
 	defer wg.Done()
 	// 로컬 맵 생성
 	m := make(map[int]int)
@@ -345,7 +107,7 @@ func worker(nb chan nonBlocking, jsons map[string]string, mutex *sync.RWMutex, c
 
 	for i := 1; i < (transferRatePerSecond)+1; i++ {
 
-		data := randomGeneratedData(jsons)
+		data := benchmark.RandomGeneratedData(jsons)
 		err := json.Unmarshal(data, &instance)
 		if err != nil {
 			log.Fatal(err)
@@ -438,19 +200,19 @@ func lineBase(details string, items []opts.LineData, tm []time.Time, numThread s
 	return line
 }
 
+// 각 HTTP 요청스레드에서 받은 채널응답을 처리하는 함수
 func HandleResponse(url string, nb chan nonBlocking, wg *sync.WaitGroup, threads int, requests int, info string) {
-
-	avg := 0.0
-	max_response_time := 0.0
-	min_response_time := -1.0
-	num := 0
-	writer := uilive.New()
+	avg := 0.0 // 평균 응답시간
+	max_response_time := 0.0 // 최대 응답시간
+	min_response_time := -1.0 // 최소 응답시간
+	num := 0 // 요청 수
+	writer := uilive.New() // 실시간으로 터미널 출력해주는 객체
 	writer.Start()
 
-	m := make(map[int]int)
-	items := make([]opts.LineData, 0)
+	responseStatusMap := make(map[int]int) // 응답 상태 코드 카운트
+	items := make([]opts.LineData, 0) // 웹 그래프용 객체
 	var tm []time.Time
-	elaspedTime := 0.0
+	elaspedTime := 0.0 // 총 응답시간
 
 	for get := range nb {
 		num += 1
@@ -471,7 +233,7 @@ func HandleResponse(url string, nb chan nonBlocking, wg *sync.WaitGroup, threads
 			min_response_time = math.Min(min_response_time, get.ElapsedTime)
 
 			// log.Println(get.Response.Status)
-			m[get.Response.StatusCode] += 1
+			responseStatusMap[get.Response.StatusCode] += 1
 			elaspedTime += get.ElapsedTime
 		}
 
@@ -482,7 +244,7 @@ func HandleResponse(url string, nb chan nonBlocking, wg *sync.WaitGroup, threads
 			boldGreen.Printf("\n [Results]\n")
 			fmt.Println("---------------------------------------------------------")
 			fmt.Println("| Response Status \t| Count \t| Percent \t|")
-			for k, v := range m {
+			for k, v := range responseStatusMap {
 				fmt.Printf("| ")
 				if 200 <= k && k < 300 {
 					green.Printf("%d \t\t\t", k)
@@ -538,7 +300,7 @@ func HandleResponse(url string, nb chan nonBlocking, wg *sync.WaitGroup, threads
 				url + dl +
 				strconv.Itoa(threads) + dl +
 				strconv.Itoa(requests) + dl +
-				fmt.Sprintf("%v", m) + dl +
+				fmt.Sprintf("%v", responseStatusMap) + dl +
 				fmt.Sprintf("%.2f", avg*1000) + dl +
 				fmt.Sprintf("%.2f", max_response_time*1000) + dl +
 				fmt.Sprintf("%.2f", min_response_time*1000) + dl +
@@ -583,56 +345,34 @@ func main() {
 	rand.Seed(time.Now().UnixNano())
 	flag.Parse()
 
-	configuration := NewConfiguration()
-
-	boldCyan.Printf("\n [Properties]\n")
-	cyan.Printf("- Max parallelism : %d\n", MaxParallelism())
-
-	cyan.Printf("- Request url : %s\n", configuration.url)
-	cyan.Printf("- The number of HTTP Requests : %d\n", configuration.requests)
-	cyan.Printf("- The number of threads : %d\n", configuration.clients)
-
+	configuration := benchmark.NewConfiguration()
 	// http 전송 url
-	requestURL := configuration.url
-
+	requestURL := configuration.Url
 	// 실행횟수 설정
-	transferRatePerSecond := configuration.requests
-
+	transferRatePerSecond := configuration.Requests
 	// 실행 스레드 개수 설정
-	number_worker := configuration.clients
+	number_worker := configuration.Threads
+
+	printProperties(requestURL, transferRatePerSecond, number_worker)
 
 	// 전체 실행 개수
-	nb := make(chan nonBlocking, configuration.requests)
+	nb := make(chan nonBlocking, number_worker)
+	client := httpPropertiesSetting(configuration)
 
-	// NGINX can handle a maximum of 512 concurrent connections. In newer versions, NGINX supports up to 1024 concurrent connections, by default.
-	// 이를 잘 확인하고 설정해야합니다.
-	t := &http.Transport{
-		MaxIdleConns:        10000,
-		MaxIdleConnsPerHost: 10000,
-		MaxConnsPerHost:     10000,
-		IdleConnTimeout:     time.Duration(configuration.client_timeout) * time.Second,
-	}
-
-	// 클라이언트 설정 및 timeout
-	client := &http.Client{
-		Timeout:   time.Duration(configuration.client_timeout) * time.Second,
-		Transport: t,
-	}
-
-	// 스레드 싱크 맵
+	// 스레드 간 공유 맵
 	var contexts = &sync.Map{}
-	var results = &sync.Map{}
 	startTime := time.Now()
 
 	// 멀티 스레드 http request
 	for i := 0; i < int(number_worker); i++ {
 		wg.Add(1)
-		go worker(nb, configuration.randomJson, mutex, contexts, wg, requestURL, client, int(transferRatePerSecond/number_worker), i, results)
+		go worker(nb, configuration.RandomJson, mutex, contexts, wg, requestURL, client, int(transferRatePerSecond/number_worker))
 	}
-
-	wg.Add(int(configuration.requests))
-	go HandleResponse(requestURL, nb, wg, int(number_worker), int(configuration.requests), configuration.info)
+	// 세마포어 대기열 추가
+	wg.Add(int(transferRatePerSecond))
+	go HandleResponse(requestURL, nb, wg, int(number_worker), int(transferRatePerSecond), configuration.Info)
 	runtime.GC()
+	// 세마포어 대기
 	wg.Wait()
 
 	elapsedTime := time.Since(startTime).Seconds()
@@ -664,4 +404,28 @@ func main() {
 	}
 
 	wg.Wait()
+}
+
+func httpPropertiesSetting(configuration *benchmark.Configuration) *http.Client {
+	t := &http.Transport{
+		MaxIdleConns:        10000,
+		MaxIdleConnsPerHost: 10000,
+		MaxConnsPerHost:     10000,
+		IdleConnTimeout:     time.Duration(configuration.RequestTimeout) * time.Second,
+	}
+
+	// 클라이언트 설정 및 timeout
+	client := &http.Client{
+		Timeout:   time.Duration(configuration.RequestTimeout) * time.Second,
+		Transport: t,
+	}
+	return client
+}
+
+func printProperties(requestURL string, transferRatePerSecond int64, number_worker int64) {
+	boldCyan.Printf("\n [Properties]\n")
+	cyan.Printf("- Max parallelism : %d\n", MaxParallelism())
+	cyan.Printf("- Request url : %s\n", requestURL)
+	cyan.Printf("- The number of HTTP Requests : %d\n", transferRatePerSecond)
+	cyan.Printf("- The number of threads : %d\n", number_worker)
 }
