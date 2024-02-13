@@ -49,14 +49,14 @@ func GetFlags() *FlagParam {
 
 func init() {
 	flags = &FlagParam{}
-	flag.StringVar(&flags.Help, "h", "", "See options")
-	flag.Int64Var(&flags.Requests, "r", 10000, "The number of request")
-	flag.Int64Var(&flags.Threads, "c", 100, "The number of thread")
-	flag.Int64Var(&flags.RequestTimeout, "t", 30, "Request timeout(second)")
-	flag.StringVar(&flags.Url, "u", "", "Request URL")
-	flag.StringVar(&flags.Info, "i", "", "Descriyption information")
-	flag.StringVar(&flags.Body, "j", "", "JSON body contents like \n\"[key1,type1,key2,type2,...]\" "+SupportJsonTypeString)
-	flag.BoolVar(&flags.OpenServer,"s", false, "Opening log server")
+	flag.StringVar(&flags.Help, "help", "", "See various options")
+	flag.Int64Var(&flags.Requests, "request", 10000, "Request count")
+	flag.Int64Var(&flags.Threads, "thread", 100, "Thread count")
+	flag.Int64Var(&flags.RequestTimeout, "timeout", 30, "Request timeout(second)")
+	flag.StringVar(&flags.Url, "url", "", "URL for request")
+	flag.StringVar(&flags.Info, "comment", "", "Comments of this test")
+	flag.StringVar(&flags.Body, "body", "", "JSON body contents like \n\"[key1,type1,key2,type2,...]\" "+SupportJsonTypeString)
+	flag.BoolVar(&flags.OpenServer,"server", false, "Opening log server")
 	flag.Parse()
 }
 

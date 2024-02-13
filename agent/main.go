@@ -20,10 +20,12 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+	"gonum.org/v1/gonum/stat"
 
 	"testapi.com/m/benchmark"
 	"github.com/fatih/color"
@@ -181,16 +183,28 @@ func ensureDir(dirName string) error {
 	return err
 }
 
+func reverseFloat64Slice(slice []float64) {
+	for i := len(slice)/2 - 1; i >= 0; i-- {
+		opp := len(slice) - 1 - i
+		slice[i], slice[opp] = slice[opp], slice[i]
+	}
+}
+
+
+// html 그래프 생성
 func lineBase(details string, items []opts.LineData, tm []time.Time, numThread string, numRequest string) *charts.Line {
 	line := charts.NewLine()
 	line.SetGlobalOptions(
-		charts.WithTitleOpts(opts.Title{Title: "[gotybench] HTTP Benchmark Graph ( numThread:" + numThread + ", numRequest:" + numRequest + " )", Subtitle: "Response Time (Second) "}),
+		charts.WithTitleOpts(opts.Title{Title: "[gotybench] HTTP Benchmark Graph ( numThread:" + numThread + ", numRequest:" + numRequest + " )", Subtitle: "Response Time (ms) "}),
 	)
 
 	line.SetXAxis(tm).
 		AddSeries("Response Time ", items).
 		SetSeriesOptions(charts.WithLineChartOpts(opts.LineChart{Smooth: true}))
-	line.SetGlobalOptions(charts.WithYAxisOpts(opts.YAxis{GridIndex: 0, Name: "", Type: "value", Show: true, Scale: true, Min: "0", Max: "40", SplitLine: &opts.SplitLine{Show: true}}))
+	line.SetGlobalOptions(charts.WithYAxisOpts(opts.YAxis{GridIndex: 0, Name: "", Type: "value", Show: true, Scale: true, SplitLine: &opts.SplitLine{Show: true}}),
+		charts.WithTooltipOpts(opts.Tooltip{Show: true, Trigger: "axis", AxisPointer: &opts.AxisPointer{Type: "cross"}}))
+
+	//SetXAxisOptions(charts.WithXAxisOpts(opts.XAxis{AxisLabel: &opts.AxisLabel{Interval: "auto", Rotate: 45, Show: true, Formatter: nil}, Position: "bottom"}))
 	f, err := os.Create("public/graph/" + details + ".html")
 	if err != nil {
 		log.Print(err)
@@ -205,25 +219,48 @@ func HandleResponse(url string, nb chan nonBlocking, wg *sync.WaitGroup, threads
 	avg := 0.0 // 평균 응답시간
 	max_response_time := 0.0 // 최대 응답시간
 	min_response_time := -1.0 // 최소 응답시간
-	num := 0 // 요청 수
+	num := 0 // 요청 누적 수
 	writer := uilive.New() // 실시간으로 터미널 출력해주는 객체
 	writer.Start()
+	responseTimeList := make([]float64, 0) // 응답시간 리스트
+	// tps 모니터링 boolean 채널
+	done := make(chan bool)
 
 	responseStatusMap := make(map[int]int) // 응답 상태 코드 카운트
 	items := make([]opts.LineData, 0) // 웹 그래프용 객체
 	var tm []time.Time
 	elaspedTime := 0.0 // 총 응답시간
+	tpsList := make([]float64, 0) // TPS 리스트
+	//tpsTimer := time.NewTicker(time.Second)
+	//startTime := time.Now()
+	transaction := 0
+
+	go func() {
+		tpsTimer := time.NewTicker(time.Second)
+		defer tpsTimer.Stop()
+		for {
+			select {
+			case <-tpsTimer.C:
+				// 1초마다 실행될 코드 작성
+				// 예를 들어, 특정 메시지를 출력하거나 필요한 작업을 수행할 수 있습니다.
+				tpsList = append(tpsList, -float64(transaction))
+				transaction = 0
+			case <-done:
+				return // 타이머 종료
+			}
+		}
+	}()
 
 	for get := range nb {
 		num += 1
+		transaction += 1
 		if (requests-num)%10 == 0 {
 			fmt.Fprintf(writer, "Listening server's response .. (%d/%d)\n", num, requests)
 		}
 		if get.Error != nil {
-			// log.Println(get.Error)
 		} else {
 			// 웹 그래프용 객체
-			items = append(items, opts.LineData{Value: get.ElapsedTime})
+			items = append(items, opts.LineData{Value: get.ElapsedTime*1000})
 			tm = append(tm, time.Now())
 			avg = float64(num-1)/float64(num)*avg + 1/float64(num)*float64(get.ElapsedTime) // 평균 필터
 			if min_response_time < 0 {
@@ -235,11 +272,14 @@ func HandleResponse(url string, nb chan nonBlocking, wg *sync.WaitGroup, threads
 			// log.Println(get.Response.Status)
 			responseStatusMap[get.Response.StatusCode] += 1
 			elaspedTime += get.ElapsedTime
+			responseTimeList = append(responseTimeList, get.ElapsedTime)
 		}
+
 
 		if num == requests {
 			writer.Stop()
 			writer.Flush()
+			done<- true // 타이머 종료
 
 			boldGreen.Printf("\n [Results]\n")
 			fmt.Println("---------------------------------------------------------")
@@ -263,10 +303,33 @@ func HandleResponse(url string, nb chan nonBlocking, wg *sync.WaitGroup, threads
 				}
 
 			}
+
+			sort.Float64s(responseTimeList)
+			p90 := stat.Quantile(0.90, stat.Empirical, responseTimeList, nil)
+			p95 := stat.Quantile(0.95, stat.Empirical, responseTimeList, nil)
+			p99 := stat.Quantile(0.99, stat.Empirical, responseTimeList, nil)
+			p50 := stat.Quantile(0.5, stat.Empirical, responseTimeList, nil)
+
 			fmt.Println("---------------------------------------------------------")
 			green.Printf("- Average response time \t: %.2f ms\n", avg*1000)
 			green.Printf("- Max response time     \t: %.2f ms\n", max_response_time*1000)
 			green.Printf("- Min response time     \t: %.2f ms\n", min_response_time*1000.0)
+			green.Printf("- Response Time 50th percentile       \t: %.2f ms\n", p50*1000)
+			green.Printf("- Response Time 90th percentile       \t: %.2f ms\n", p90*1000)
+			green.Printf("- Response Time 95th percentile       \t: %.2f ms\n", p95*1000)
+			green.Printf("- Response Time 99th percentile       \t: %.2f ms\n", p99*1000)
+
+
+			// TPS 퍼센타일 계산
+			sort.Float64s(tpsList)
+			tpsP95 := stat.Quantile(0.95, stat.Empirical, tpsList, nil)
+			tpsP99 := stat.Quantile(0.99, stat.Empirical, tpsList, nil)
+			tpsP90 := stat.Quantile(0.90, stat.Empirical, tpsList, nil)
+			tpsP50 := stat.Quantile(0.50, stat.Empirical, tpsList, nil)
+			fmt.Printf("- TPS 50th percentile       \t: %.2f\n", -tpsP50)
+			fmt.Printf("- TPS 90th percentile       \t: %.2f\n", -tpsP90)
+			fmt.Printf("- TPS 95th percentile       \t: %.2f\n", -tpsP95)
+			fmt.Printf("- TPS 99th percentile       \t: %.2f\n", -tpsP99)
 
 			dl := "|"
 			details := time.Now().Format("2006-01-02:15:04:05")
@@ -311,6 +374,8 @@ func HandleResponse(url string, nb chan nonBlocking, wg *sync.WaitGroup, threads
 		}
 		wg.Done()
 	}
+
+
 
 }
 
@@ -357,20 +422,24 @@ func main() {
 
 	// 전체 실행 개수
 	nb := make(chan nonBlocking, number_worker)
-	client := httpPropertiesSetting(configuration)
+
 
 	// 스레드 간 공유 맵
 	var contexts = &sync.Map{}
 	startTime := time.Now()
 
+	wg.Add(int(transferRatePerSecond))
+	go HandleResponse(requestURL, nb, wg, int(number_worker), int(transferRatePerSecond), configuration.Info)
+
 	// 멀티 스레드 http request
 	for i := 0; i < int(number_worker); i++ {
 		wg.Add(1)
-		go worker(nb, configuration.RandomJson, mutex, contexts, wg, requestURL, client, int(transferRatePerSecond/number_worker))
+		go worker(nb, configuration.RandomJson, mutex, contexts, wg, requestURL,
+			httpPropertiesSetting(configuration), int(transferRatePerSecond/number_worker))
 	}
 	// 세마포어 대기열 추가
-	wg.Add(int(transferRatePerSecond))
-	go HandleResponse(requestURL, nb, wg, int(number_worker), int(transferRatePerSecond), configuration.Info)
+	//wg.Add(int(transferRatePerSecond))
+
 	runtime.GC()
 	// 세마포어 대기
 	wg.Wait()
@@ -408,9 +477,9 @@ func main() {
 
 func httpPropertiesSetting(configuration *benchmark.Configuration) *http.Client {
 	t := &http.Transport{
-		MaxIdleConns:        10000,
-		MaxIdleConnsPerHost: 10000,
-		MaxConnsPerHost:     10000,
+		MaxIdleConns:        5,
+		MaxIdleConnsPerHost: 10,
+		MaxConnsPerHost:     100,
 		IdleConnTimeout:     time.Duration(configuration.RequestTimeout) * time.Second,
 	}
 

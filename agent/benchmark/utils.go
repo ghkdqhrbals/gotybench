@@ -22,7 +22,7 @@ func errorKeyType(key string) {
 }
 
 // 현재 고루틴의 고유 ID를 반환합니다.
-func goid() int {
+func Goid() int {
 	var buf [64]byte
 	n := runtime.Stack(buf[:], false)
 	idField := strings.Fields(strings.TrimPrefix(string(buf[:n]), "goroutine "))[0]
@@ -32,3 +32,4 @@ func goid() int {
 	}
 	return id
 }
+
